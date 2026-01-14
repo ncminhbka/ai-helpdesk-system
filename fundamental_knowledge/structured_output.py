@@ -1,1 +1,0 @@
-# Pydantic is a popular data validation library in Python that uses type annotations to define data models.
