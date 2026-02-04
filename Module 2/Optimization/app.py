@@ -12,6 +12,7 @@ from retriever import HybridRetriever
 from reranker import FlashRankReranker
 from tool import create_advanced_retrieval_tool
 from workflow_viz import get_workflow_mermaid, get_workflow_description
+from query_classifier import QueryClassifier, QueryCategory  # Import Classifier
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 from langchain_core.messages import SystemMessage
@@ -101,12 +102,18 @@ if "agent_initialized" not in st.session_state:
 if "graph" not in st.session_state:
     st.session_state.graph = None
 
+if "classifier" not in st.session_state:
+    st.session_state.classifier = None
+
 def initialize_agent():
     """Initialize the Advanced RAG agent with all components."""
     try:
         # Load environment variables
-        dotenv_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+        dotenv_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), '.env')
         load_dotenv(dotenv_path)
+
+        # Set LangSmith Project for Module 2
+        os.environ["LANGCHAIN_PROJECT"] = "Module 2 Advanced RAG"
 
         if not os.getenv("OPENAI_API_KEY"):
             st.error("❌ Error: OPENAI_API_KEY not found in .env file.")
@@ -114,7 +121,7 @@ def initialize_agent():
 
         with st.spinner("📚 Loading PDF documents..."):
             # 1. Load PDFs
-            pdf_directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "pdf")
+            pdf_directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "pdf")
             documents = load_docs(pdf_directory)
             
             if not documents:
@@ -168,6 +175,9 @@ def initialize_agent():
                 tools=tools, 
                 system_prompt=SystemMessage(content=system_message)
             )
+            
+            # 8. Initialize Classifier
+            st.session_state.classifier = QueryClassifier(llm=agent_llm)
 
         st.session_state.agent_initialized = True
         st.success("✅ Advanced RAG Agent initialized successfully!")
@@ -182,10 +192,40 @@ def initialize_agent():
 def process_query(query):
     """Process user query through the Advanced RAG agent."""
     try:
-        inputs = {"messages": [("user", query)]}
-        response = st.session_state.graph.invoke(inputs)
-        last_message = response["messages"][-1]
-        return last_message.content
+        # 1. Classify Query
+        with st.spinner("🤖 Classifying query..."):
+            classification = st.session_state.classifier.classify(query)
+            category = classification.category
+            reasoning = classification.reasoning
+            
+            # Show classification result in UI (for demo purposes)
+            with st.expander("🔍 Query Analysis", expanded=False):
+                st.write(f"**Category:** {category.value}")
+                st.write(f"**Reasoning:** {reasoning}")
+
+        # 2. Route based on category
+        if category == QueryCategory.GREETING:
+            return "👋 Hello! I'm your FPT Policy Assistant. How can I help you regarding company regulations today?"
+            
+        elif category == QueryCategory.OUT_OF_SCOPE:
+            return "🚫 I'm sorry, but I can only assist with questions related to FPT regulations and policies. Please ask something about the company handbook, code of conduct, or benefits."
+            
+        elif category == QueryCategory.HARMFUL:
+            return "⚠️ I cannot fulfill this request. I am programmed to be a helpful and safe assistant."
+            
+        elif category == QueryCategory.POLICY_QUERY:
+            inputs = {"messages": [("user", query)]}
+            response = st.session_state.graph.invoke(inputs)
+            last_message = response["messages"][-1]
+            return last_message.content
+            
+        else:
+            # Fallback
+            inputs = {"messages": [("user", query)]}
+            response = st.session_state.graph.invoke(inputs)
+            last_message = response["messages"][-1]
+            return last_message.content
+
     except Exception as e:
         return f"❌ An error occurred: {str(e)}"
 
@@ -201,7 +241,7 @@ with st.sidebar:
     - 🔍 **Hybrid Search**: BM25 + Vector + RRF
     - ⭐ **FlashRank**: Reranking
     - 🤖 **ReAct Agent**: GPT-4o-mini
-    - 📊 **Debug Logging**: All stages logged
+    - 📊 **LangSmith**: Tracing & Monitoring
     """)
     
     st.markdown("---")
@@ -232,7 +272,7 @@ with st.sidebar:
     st.markdown("""
     - Ask about FPT policies
     - Citations included automatically
-    - Check `debug_logs/` folder for details
+    - Check LangSmith for detailed traces
     - Compare with Module 1 results
     """)
 
@@ -246,11 +286,12 @@ with st.expander("📊 View RAG Workflow", expanded=False):
     
     with col1:
         # Display the workflow diagram as an image
-        workflow_img_path = os.path.join(os.path.dirname(__file__), "rag_workflow_diagram_1768906834555.png")
+        workflow_img_path = os.path.join(os.path.dirname(__file__), "module2_academic_diagram.png")
         if os.path.exists(workflow_img_path):
-            st.image(workflow_img_path, caption="Advanced RAG System Pipeline", width="stretch")
+            st.image(workflow_img_path, caption="Module 2: Advanced RAG System Architecture", use_container_width=True)
         else:
             st.warning("Workflow diagram not found. Please check the Module 2 folder for PNG files.")
+
     
     with col2:
         st.markdown(get_workflow_description())

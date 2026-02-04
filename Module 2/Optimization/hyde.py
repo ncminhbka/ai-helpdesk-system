@@ -2,6 +2,7 @@ import os
 from datetime import datetime
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
+from langsmith import traceable
 
 class HyDEQueryTransformer:
     """
@@ -30,10 +31,8 @@ class HyDEQueryTransformer:
              "not as a response to a question."),
             ("user", "{query}")
         ])
-        
-        self.log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug_logs")
-        os.makedirs(self.log_dir, exist_ok=True)
     
+    @traceable(run_type="tool", name="HyDE Transformation")
     def transform(self, query: str) -> str:
         """
         Transform a query into a hypothetical document.
@@ -48,31 +47,4 @@ class HyDEQueryTransformer:
         response = chain.invoke({"query": query})
         hypothetical_doc = response.content
         
-        # Log HyDE transformation
-        self._log_hyde(query, hypothetical_doc)
-        
         return hypothetical_doc
-    
-    def _log_hyde(self, original_query: str, hypothetical_doc: str):
-        """
-        Log HyDE transformation to debug file.
-        """
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_file = os.path.join(self.log_dir, f"hyde_{timestamp}.txt")
-        
-        with open(log_file, 'w', encoding='utf-8') as f:
-            f.write("=" * 80 + "\n")
-            f.write(f"HyDE QUERY TRANSFORMATION - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-            f.write("=" * 80 + "\n\n")
-            
-            f.write("ORIGINAL QUERY:\n")
-            f.write("-" * 80 + "\n")
-            f.write(original_query + "\n")
-            f.write("-" * 80 + "\n\n")
-            
-            f.write("HYPOTHETICAL DOCUMENT:\n")
-            f.write("-" * 80 + "\n")
-            f.write(hypothetical_doc + "\n")
-            f.write("-" * 80 + "\n")
-        
-        print(f"HyDE transformation logged to: {log_file}")

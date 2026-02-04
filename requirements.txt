@@ -1,7 +1,14 @@
-langchain
+langchain>=1.0.0
 langchain-openai
 langchain-community
+langchain-experimental
 pypdf
 faiss-cpu
 python-dotenv
 langchain-text-splitters
+streamlit
+rank-bm25
+flashrank
+ragas>=0.1.0
+datasets
+pandas

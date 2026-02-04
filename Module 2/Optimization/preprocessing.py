@@ -1,5 +1,4 @@
 import os
-from datetime import datetime
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_experimental.text_splitter import SemanticChunker
 from langchain_openai import OpenAIEmbeddings
@@ -46,38 +45,4 @@ def split_docs_semantic(documents):
     chunks = text_splitter.split_documents(documents)
     print(f"Split {len(documents)} documents into {len(chunks)} semantic chunks.")
     
-    # Log chunks for debugging
-    log_chunks(chunks)
-    
     return chunks
-
-def log_chunks(chunks):
-    """
-    Log chunk information to debug file.
-    """
-    log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug_logs")
-    os.makedirs(log_dir, exist_ok=True)
-    
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = os.path.join(log_dir, f"chunks_{timestamp}.txt")
-    
-    with open(log_file, 'w', encoding='utf-8') as f:
-        f.write("=" * 80 + "\n")
-        f.write(f"SEMANTIC CHUNKING DEBUG LOG - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        f.write("=" * 80 + "\n\n")
-        f.write(f"Total chunks: {len(chunks)}\n\n")
-        
-        for i, chunk in enumerate(chunks, 1):
-            f.write(f"\n{'=' * 80}\n")
-            f.write(f"CHUNK {i}\n")
-            f.write(f"{'=' * 80}\n")
-            f.write(f"Source: {chunk.metadata.get('source', 'Unknown')}\n")
-            f.write(f"Page: {chunk.metadata.get('page_label', 'Unknown')}\n")
-            f.write(f"Length: {len(chunk.page_content)} characters\n")
-            f.write(f"\nContent:\n{'-' * 80}\n")
-            f.write(chunk.page_content[:500])  # First 500 chars
-            if len(chunk.page_content) > 500:
-                f.write(f"\n... ({len(chunk.page_content) - 500} more characters)")
-            f.write(f"\n{'-' * 80}\n")
-    
-    print(f"Chunks logged to: {log_file}")

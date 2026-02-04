@@ -23,3 +23,13 @@ build/
 
 # Logs
 *.log
+
+
+# Module 2 - Advanced RAG
+debug_logs/
+flashrank_cache/
+*.faiss
+*.pkl
+
+# Mac OS
+.DS_Store

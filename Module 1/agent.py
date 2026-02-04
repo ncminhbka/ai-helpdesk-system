@@ -22,7 +22,7 @@ def main():
         return
 
     # 1. Load PDFs
-    pdf_directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pdf")
+    pdf_directory = os.path.join(os.path.dirname(os.path.abspath(__file__)),"..", "pdf")
     documents = load_docs(pdf_directory)
     if not documents:
         print("No documents loaded. Exiting.")

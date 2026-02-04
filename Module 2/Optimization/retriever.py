@@ -5,6 +5,7 @@ from langchain_core.documents import Document
 from langchain_community.retrievers import BM25Retriever
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
+from langsmith import traceable
 
 class HybridRetriever:
     """
@@ -37,11 +38,9 @@ class HybridRetriever:
         self.vector_store = FAISS.from_documents(documents, embeddings)
         self.vector_retriever = self.vector_store.as_retriever(search_kwargs={"k": vector_k})
         
-        self.log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug_logs")
-        os.makedirs(self.log_dir, exist_ok=True)
-        
         print(f"Hybrid retriever initialized (BM25 k={bm25_k}, Vector k={vector_k}, Final k={k})")
     
+    @traceable(run_type="retriever", name="Hybrid Retrieval")
     def invoke(self, query: str) -> List[Document]:
         """
         Retrieve documents using hybrid search.
@@ -69,11 +68,9 @@ class HybridRetriever:
             k=self.k
         )
         
-        # Log all results
-        self._log_retrieval(query, bm25_docs, vector_docs, fused_docs)
-        
         return fused_docs
     
+    @traceable(run_type="tool", name="Reciprocal Rank Fusion")
     def _reciprocal_rank_fusion(self, query: str, bm25_docs: List[Document], 
                                 vector_docs: List[Document], k: int = 5) -> List[Document]:
         """
@@ -118,57 +115,3 @@ class HybridRetriever:
         page = doc.metadata.get('page_label', 'unknown')
         content_snippet = doc.page_content[:100]  # First 100 chars as unique identifier
         return f"{source}_{page}_{hash(content_snippet)}"
-    
-    def _log_retrieval(self, query: str, bm25_docs: List[Document], 
-                      vector_docs: List[Document], fused_docs: List[Document]):
-        """
-        Log all retrieval results to debug file.
-        """
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_file = os.path.join(self.log_dir, f"hybrid_retrieval_{timestamp}.txt")
-        
-        with open(log_file, 'w', encoding='utf-8') as f:
-            f.write("=" * 80 + "\n")
-            f.write(f"HYBRID RETRIEVAL DEBUG LOG - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-            f.write("=" * 80 + "\n\n")
-            
-            f.write(f"QUERY: {query}\n\n")
-            
-            # BM25 results
-            f.write("=" * 80 + "\n")
-            f.write(f"BM25 RETRIEVAL RESULTS (k={self.bm25_k})\n")
-            f.write("=" * 80 + "\n")
-            self._write_docs(f, bm25_docs)
-            
-            # Vector results
-            f.write("\n" + "=" * 80 + "\n")
-            f.write(f"VECTOR RETRIEVAL RESULTS (k={self.vector_k})\n")
-            f.write("=" * 80 + "\n")
-            self._write_docs(f, vector_docs)
-            
-            # Fused results
-            f.write("\n" + "=" * 80 + "\n")
-            f.write(f"RRF FUSED RESULTS (k={self.k})\n")
-            f.write("=" * 80 + "\n")
-            for i, doc in enumerate(fused_docs, 1):
-                f.write(f"\n--- Document {i} ---\n")
-                f.write(f"Source: {doc.metadata.get('source', 'Unknown')}\n")
-                f.write(f"Page: {doc.metadata.get('page_label', 'Unknown')}\n")
-                f.write(f"RRF Score: {doc.metadata.get('rrf_score', 'N/A'):.6f}\n")
-                f.write(f"BM25 Rank: {doc.metadata.get('bm25_rank', 'Not in BM25 results')}\n")
-                f.write(f"Vector Rank: {doc.metadata.get('vector_rank', 'Not in vector results')}\n")
-                f.write(f"\nContent:\n{doc.page_content[:300]}...\n")
-        
-        print(f"Hybrid retrieval logged to: {log_file}")
-    
-    def _write_docs(self, f, docs: List[Document]):
-        """Helper to write document list to file."""
-        if not docs:
-            f.write("No documents retrieved.\n")
-            return
-        
-        for i, doc in enumerate(docs, 1):
-            f.write(f"\n--- Document {i} ---\n")
-            f.write(f"Source: {doc.metadata.get('source', 'Unknown')}\n")
-            f.write(f"Page: {doc.metadata.get('page_label', 'Unknown')}\n")
-            f.write(f"\nContent:\n{doc.page_content[:300]}...\n")

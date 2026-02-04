@@ -109,13 +109,16 @@ def initialize_agent():
         dotenv_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
         load_dotenv(dotenv_path)
 
+        # Set LangSmith Project for Module 1
+        os.environ["LANGCHAIN_PROJECT"] = "Module 1 RAG"
+
         if not os.getenv("OPENAI_API_KEY"):
             st.error("❌ Error: OPENAI_API_KEY not found in .env file.")
             return False
 
         with st.spinner("🔄 Loading PDF documents..."):
             # 1. Load PDFs
-            pdf_directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pdf")
+            pdf_directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "pdf")
             documents = load_docs(pdf_directory)
             
             if not documents:

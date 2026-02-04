@@ -1,0 +1,46 @@
+{
+  "evaluation_date": "2026-01-30T15:12:50.999057",
+  "num_questions": 5,
+  "module1": {
+    "system_name": "Module1 Naive RAG",
+    "metrics": {
+      "faithfulness": {
+        "mean": 0.5976587301587302,
+        "std": 0.2906176606016316
+      },
+      "answer_relevancy": {
+        "mean": 0.5615872604288441,
+        "std": 0.5132550007940109
+      },
+      "context_precision": {
+        "mean": 0.499999999975,
+        "std": 0.49999999998125
+      },
+      "context_recall": {
+        "mean": 0.2,
+        "std": 0.447213595499958
+      }
+    }
+  },
+  "module2": {
+    "system_name": "Module2 Advanced RAG",
+    "metrics": {
+      "faithfulness": {
+        "mean": 0.8416666666666668,
+        "std": 0.20497289793748072
+      },
+      "answer_relevancy": {
+        "mean": 0.5534841171864409,
+        "std": 0.5067556463759844
+      },
+      "context_precision": {
+        "mean": 0.49999999997,
+        "std": 0.499999999975
+      },
+      "context_recall": {
+        "mean": 0.4,
+        "std": 0.5477225575051662
+      }
+    }
+  }
+}
