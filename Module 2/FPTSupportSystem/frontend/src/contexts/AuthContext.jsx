@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react'
 
-const API_BASE = 'http://localhost:8000'
+const API_BASE = 'http://localhost:8000/api/v1'
 
 const AuthContext = createContext(null)
 
@@ -21,7 +21,7 @@ export function AuthProvider({ children }) {
 
     const fetchUser = async () => {
         try {
-            const response = await fetch(`${API_BASE}/auth/me`, {
+            const response = await fetch(`${API_BASE}/users/me`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
@@ -45,12 +45,16 @@ export function AuthProvider({ children }) {
     const login = async (email, password) => {
         setError(null)
         try {
+            const formData = new URLSearchParams()
+            formData.append('username', email)
+            formData.append('password', password)
+
             const response = await fetch(`${API_BASE}/auth/login`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/x-www-form-urlencoded'
                 },
-                body: JSON.stringify({ email, password })
+                body: formData
             })
 
             if (!response.ok) {

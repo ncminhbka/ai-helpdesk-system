@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 
-const API_BASE = 'http://localhost:8000'
+const API_BASE = 'http://localhost:8000/api/v1'
 
 export default function SessionSidebar({
     currentSession,
@@ -20,7 +20,7 @@ export default function SessionSidebar({
 
     const fetchSessions = async () => {
         try {
-            const response = await fetch(`${API_BASE}/sessions`, {
+            const response = await fetch(`${API_BASE}/chat/sessions`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
@@ -39,7 +39,7 @@ export default function SessionSidebar({
 
     const createNewSession = async () => {
         try {
-            const response = await fetch(`${API_BASE}/sessions`, {
+            const response = await fetch(`${API_BASE}/chat/sessions`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -64,7 +64,7 @@ export default function SessionSidebar({
         if (!confirm('Delete this chat?')) return
 
         try {
-            const response = await fetch(`${API_BASE}/sessions/${sessionId}`, {
+            const response = await fetch(`${API_BASE}/chat/sessions/${sessionId}`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${token}`
@@ -99,16 +99,11 @@ export default function SessionSidebar({
         <div className="w-72 h-screen flex flex-col glass-dark border-r border-white/5">
             {/* Header */}
             <div className="p-4 border-b border-white/5">
-                <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-xl gradient-orange flex items-center justify-center">
-                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                        </svg>
-                    </div>
+                <div className="flex items-center gap-3 mb-4 pl-2">
+                    <img src="/logo.png" alt="FPT Logo" className="w-12 h-12 object-contain" />
                     <div>
-                        <h1 className="font-semibold text-white">FPT Support</h1>
-                        <p className="text-xs text-gray-400">AI Assistant</p>
+                        <h1 className="font-bold text-white text-lg tracking-tight">FPT Support</h1>
+                        <p className="text-xs text-gray-400 font-medium">AI Assistant</p>
                     </div>
                 </div>
 

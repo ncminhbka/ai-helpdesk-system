@@ -1,14 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
-import ConfirmationForm from './ConfirmationForm'
 
-const API_BASE = 'http://localhost:8000'
+const API_BASE = 'http://localhost:8000/api/v1'
 
 export default function ChatInterface({ session, onSessionUpdate }) {
     const [messages, setMessages] = useState([])
     const [inputValue, setInputValue] = useState('')
     const [isLoading, setIsLoading] = useState(false)
-    const [pendingConfirm, setPendingConfirm] = useState(null)
 
     const messagesEndRef = useRef(null)
     const inputRef = useRef(null)
@@ -30,14 +28,14 @@ export default function ChatInterface({ session, onSessionUpdate }) {
 
     // Focus input when ready
     useEffect(() => {
-        if (!isLoading && !pendingConfirm) {
+        if (!isLoading) {
             inputRef.current?.focus()
         }
-    }, [isLoading, pendingConfirm])
+    }, [isLoading])
 
     const loadMessages = async () => {
         try {
-            const response = await fetch(`${API_BASE}/sessions/${session.session_id}`, {
+            const response = await fetch(`${API_BASE}/chat/sessions/${session.session_id}`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
@@ -46,17 +44,6 @@ export default function ChatInterface({ session, onSessionUpdate }) {
             if (response.ok) {
                 const data = await response.json()
                 setMessages(data.messages || [])
-
-                // Check for pending confirmation in last message
-                const lastMsg = data.messages?.[data.messages.length - 1]
-                if (lastMsg?.message_type === 'confirm' && lastMsg?.metadata) {
-                    setPendingConfirm({
-                        actionId: lastMsg.metadata.action_id,
-                        action: lastMsg.metadata.action,
-                        data: lastMsg.metadata.data,
-                        fields: lastMsg.metadata.fields
-                    })
-                }
             }
         } catch (err) {
             console.error('Failed to load messages:', err)
@@ -81,7 +68,7 @@ export default function ChatInterface({ session, onSessionUpdate }) {
         setIsLoading(true)
 
         try {
-            const response = await fetch(`${API_BASE}/chat`, {
+            const response = await fetch(`${API_BASE}/chat/chat`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -102,24 +89,9 @@ export default function ChatInterface({ session, onSessionUpdate }) {
                     content: data.content,
                     message_type: data.type,
                     created_at: new Date().toISOString(),
-                    metadata: data.action_id ? {
-                        action_id: data.action_id,
-                        action: data.action,
-                        data: data.data,
-                        fields: data.fields
-                    } : null
+                    metadata: null
                 }
                 setMessages(prev => [...prev, assistantMsg])
-
-                // Handle confirmation request
-                if (data.type === 'confirm') {
-                    setPendingConfirm({
-                        actionId: data.action_id,
-                        action: data.action,
-                        data: data.data,
-                        fields: data.fields
-                    })
-                }
 
                 // Update session title if first message
                 if (onSessionUpdate && messages.length === 0) {
@@ -142,69 +114,15 @@ export default function ChatInterface({ session, onSessionUpdate }) {
         }
     }
 
-    const handleConfirm = async (actionId, edits) => {
-        setIsLoading(true)
-        try {
-            const response = await fetch(`${API_BASE}/confirm/${actionId}`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ edits })
-            })
-
-            if (response.ok) {
-                const data = await response.json()
-                setMessages(prev => [...prev, {
-                    role: 'assistant',
-                    content: data.content,
-                    message_type: 'message',
-                    created_at: new Date().toISOString()
-                }])
-            }
-        } catch (err) {
-            console.error('Confirmation failed:', err)
-        } finally {
-            setPendingConfirm(null)
-            setIsLoading(false)
-        }
-    }
-
-    const handleCancel = async (actionId) => {
-        try {
-            await fetch(`${API_BASE}/cancel/${actionId}`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            })
-
-            setMessages(prev => [...prev, {
-                role: 'assistant',
-                content: 'Đã hủy thao tác. / Action cancelled.',
-                message_type: 'message',
-                created_at: new Date().toISOString()
-            }])
-        } catch (err) {
-            console.error('Cancel failed:', err)
-        } finally {
-            setPendingConfirm(null)
-        }
-    }
-
     // Empty state
     if (!session) {
         return (
             <div className="flex-1 flex items-center justify-center">
                 <div className="text-center">
-                    <div className="w-20 h-20 mx-auto mb-6 rounded-2xl gradient-orange flex items-center justify-center">
-                        <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                        </svg>
+                    <div className="w-32 h-32 mx-auto mb-6 flex items-center justify-center p-4">
+                        <img src="/logo.png" alt="FPT Logo" className="w-full h-full object-contain drop-shadow-2xl" />
                     </div>
-                    <h2 className="text-2xl font-semibold text-white mb-2">FPT Support Assistant</h2>
+                    <h2 className="text-3xl font-bold text-white mb-3">FPT Support Assistant</h2>
                     <p className="text-gray-400 mb-6 max-w-md">
                         Start a new conversation to get help with tickets, bookings, policies, or IT support.
                     </p>
@@ -272,17 +190,6 @@ export default function ChatInterface({ session, onSessionUpdate }) {
                 )}
             </div>
 
-            {/* Confirmation Form */}
-            {pendingConfirm && (
-                <ConfirmationForm
-                    action={pendingConfirm.action}
-                    data={pendingConfirm.data}
-                    fields={pendingConfirm.fields}
-                    onConfirm={(edits) => handleConfirm(pendingConfirm.actionId, edits)}
-                    onCancel={() => handleCancel(pendingConfirm.actionId)}
-                />
-            )}
-
             {/* Input */}
             <div className="px-6 py-4 border-t border-white/5">
                 <form onSubmit={sendMessage} className="max-w-3xl mx-auto">
@@ -292,13 +199,13 @@ export default function ChatInterface({ session, onSessionUpdate }) {
                             type="text"
                             value={inputValue}
                             onChange={(e) => setInputValue(e.target.value)}
-                            placeholder={pendingConfirm ? "Please confirm or cancel the action above..." : "Type your message..."}
-                            disabled={isLoading || !!pendingConfirm}
+                            placeholder="Type your message..."
+                            disabled={isLoading}
                             className="flex-1 input-dark disabled:opacity-50"
                         />
                         <button
                             type="submit"
-                            disabled={!inputValue.trim() || isLoading || !!pendingConfirm}
+                            disabled={!inputValue.trim() || isLoading}
                             className="btn-primary px-6 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

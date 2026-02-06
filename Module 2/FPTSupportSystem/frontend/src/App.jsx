@@ -3,7 +3,7 @@ import { useAuth } from './contexts/AuthContext'
 import AuthPage from './components/AuthPage'
 import SessionSidebar from './components/SessionSidebar'
 import ChatInterface from './components/ChatInterface'
-import DatabaseViewer from './components/DatabaseViewer'
+
 
 export default function App() {
     const { isAuthenticated, loading } = useAuth()
@@ -54,9 +54,6 @@ export default function App() {
                     }}
                 />
             </div>
-
-            {/* Database Viewer */}
-            <DatabaseViewer />
         </div>
     )
 }
