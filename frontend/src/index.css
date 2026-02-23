@@ -1,0 +1,237 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==================== DESIGN SYSTEM ==================== */
+
+:root {
+    --fpt-orange: #F37021;
+    --fpt-orange-light: #ff8c42;
+    --fpt-blue: #005BAA;
+    --fpt-blue-light: #1a7fd4;
+    --dark-bg: #0a0b0e;
+    --dark-surface: #12141a;
+    --dark-elevated: #1a1d23;
+    --glass-bg: rgba(26, 29, 35, 0.8);
+    --glass-border: rgba(255, 255, 255, 0.06);
+}
+
+/* ==================== BASE STYLES ==================== */
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: var(--dark-bg);
+    color: #e5e7eb;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* ==================== GLASSMORPHISM ==================== */
+
+.glass {
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+}
+
+.glass-dark {
+    background: rgba(18, 20, 26, 0.95);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+}
+
+/* ==================== BUTTONS ==================== */
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--fpt-orange), var(--fpt-orange-light));
+    border: none;
+    border-radius: 12px;
+    padding: 10px 20px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: white;
+}
+.btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px rgba(243, 112, 33, 0.3);
+}
+
+.btn-secondary {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 10px 20px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: white;
+}
+.btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* ==================== INPUT ==================== */
+
+.input-dark {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 12px 16px;
+    color: white;
+    font-size: 0.95rem;
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.input-dark::placeholder {
+    color: rgba(255, 255, 255, 0.3);
+}
+.input-dark:focus {
+    border-color: var(--fpt-orange);
+    box-shadow: 0 0 0 3px rgba(243, 112, 33, 0.15);
+}
+
+/* ==================== MESSAGES ==================== */
+
+.message-user {
+    background: linear-gradient(135deg, var(--fpt-orange), var(--fpt-orange-light));
+    border-radius: 18px 18px 4px 18px;
+    box-shadow: 0 4px 16px rgba(243, 112, 33, 0.2);
+}
+
+.message-assistant {
+    background: var(--dark-elevated);
+    border: 1px solid var(--glass-border);
+    border-radius: 18px 18px 18px 4px;
+}
+
+/* ==================== GRADIENT ==================== */
+
+.gradient-orange {
+    background: linear-gradient(135deg, var(--fpt-orange), var(--fpt-orange-light));
+}
+
+/* ==================== ANIMATIONS ==================== */
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-dot {
+    0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+    40% { transform: scale(1); opacity: 1; }
+}
+
+.animate-fade-in {
+    animation: fadeIn 0.3s ease-out;
+}
+
+.animate-slide-up {
+    animation: slideUp 0.4s ease-out;
+}
+
+/* Loading dots */
+.loading-dots {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 0;
+}
+.loading-dots span {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--fpt-orange);
+    animation: pulse-dot 1.4s infinite ease-in-out;
+}
+.loading-dots span:nth-child(2) { animation-delay: 0.16s; }
+.loading-dots span:nth-child(3) { animation-delay: 0.32s; }
+
+/* ==================== MARKDOWN ==================== */
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3 {
+    font-weight: 600;
+    margin: 0.5em 0 0.3em;
+}
+.markdown-content h1 { font-size: 1.25rem; }
+.markdown-content h2 { font-size: 1.1rem; }
+.markdown-content h3 { font-size: 1rem; }
+
+.markdown-content p {
+    margin: 0.3em 0;
+    line-height: 1.6;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+    margin: 0.3em 0;
+    padding-left: 1.5em;
+}
+
+.markdown-content li {
+    margin: 0.15em 0;
+}
+
+.markdown-content code {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.875em;
+    font-family: 'Fira Code', monospace;
+}
+
+.markdown-content pre {
+    background: rgba(0, 0, 0, 0.3);
+    padding: 12px;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin: 0.5em 0;
+}
+
+.markdown-content a {
+    color: var(--fpt-orange-light);
+    text-decoration: underline;
+}
+
+.markdown-content strong {
+    font-weight: 600;
+    color: white;
+}
+
+.markdown-content hr {
+    border: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    margin: 0.75em 0;
+}
