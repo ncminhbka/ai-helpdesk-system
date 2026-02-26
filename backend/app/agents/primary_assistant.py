@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-
+# get primary assistant runnable (prompt + llm + tools)
 def get_primary_assistant_runnable() -> Runnable:
     """Create the primary assistant runnable with transfer tools."""
     llm = ChatOpenAI(

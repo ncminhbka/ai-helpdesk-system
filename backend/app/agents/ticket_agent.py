@@ -18,14 +18,8 @@ load_dotenv()
 
 # ==================== TOOL DEFINITIONS ====================
 
-# Safe tools: read-only
-ticket_safe_tools = [track_ticket]
-
-# Sensitive tools: write operations
-ticket_sensitive_tools = [create_ticket, update_ticket]
-
-# All ticket tools
-ticket_tools = ticket_safe_tools + ticket_sensitive_tools
+# All ticket tools (HITL interrupt logic is inside each sensitive tool)
+ticket_tools = [track_ticket, create_ticket, update_ticket]
 
 
 # ==================== RUNNABLE CREATION ====================
