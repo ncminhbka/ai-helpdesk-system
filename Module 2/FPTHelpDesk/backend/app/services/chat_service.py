@@ -1,7 +1,8 @@
 """
 Chat service - Orchestrates LangGraph invocation and message persistence.
-Handles session management, HITL resume, and message saving.
+Handles session management, HITL resume via Command(resume=...), and message saving.
 """
+import json
 import uuid
 from datetime import datetime
 from typing import Optional, Any
@@ -9,6 +10,7 @@ from typing import Optional, Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+from langgraph.types import Command
 
 from app.models.chat import ChatSession, Message
 from app.utils.helpers import truncate_text, safe_json_dumps
@@ -92,10 +94,10 @@ class ChatService:
 
         Flow:
         1. Save user message to DB
-        2. Check if graph is paused (HITL) and handle resume
+        2. Check if graph is paused (HITL interrupt) and handle resume
         3. Otherwise, invoke graph with new message
-        4. After invoke, check if graph is NOW interrupted (pending HITL)
-        5. Return confirm-type response if HITL, else message-type
+        4. After invoke, check for __interrupt__ in result
+        5. Return confirm-type response if interrupted, else message-type
         """
         # Save user message
         await ChatService.save_message(db, session_id, "user", message)
@@ -104,48 +106,50 @@ class ChatService:
         config = {"configurable": {"thread_id": session_id}}
 
         try:
-            # Check if the graph is ALREADY in an interrupted (HITL) state
+            # Check if the graph is ALREADY in an interrupted state 
             current_state = graph.get_state(config)
             is_interrupted = bool(current_state.next)
 
-            if is_interrupted:
+            if is_interrupted: # (confirmation form already shown, waiting for user response)
                 # HITL flow: user is responding to confirmation
-                response_content = await ChatService._handle_hitl_resume(
-                    graph, config, message, user_id, user_email
+                result = await ChatService._handle_hitl_resume(
+                    graph, config, message
                 )
-                response_type = "message"
             else:
                 # Normal flow: invoke graph with new message
-                response_content = await ChatService._invoke_graph(
+                result = await ChatService._invoke_graph(
                     graph, config, message, user_id, user_email, session_id
                 )
-                response_type = "message"
 
-            # After invoke, check if graph is NOW interrupted (new HITL pending)
-            post_state = graph.get_state(config)
-            is_now_interrupted = bool(post_state.next)
-
-            pending_action = None
-            pending_data = None
-
-            if is_now_interrupted:
+            # Check if the result contains an __interrupt__ after invoke
+            if isinstance(result, dict) and "__interrupt__" in result:
+                interrupt_data = result["__interrupt__"][0].value
+                response_content = ChatService._build_confirm_message(interrupt_data)
                 response_type = "confirm"
-                # Extract the pending tool call details
-                pending_action, pending_data = ChatService._extract_pending_action(post_state)
 
-                # Build a CLEAN confirmation message from tool call data
-                # (don't use response_content — it repeats the agent's prior text)
-                response_content = ChatService._build_confirm_message(
-                    pending_action, pending_data
+                # Update session title from first message
+                await ChatService._maybe_update_title(db, session_id, message)
+
+                # Save assistant message
+                await ChatService.save_message(
+                    db, session_id, "assistant", response_content,
+                    message_type=response_type,
+                    metadata=interrupt_data,
                 )
 
+                return {
+                    "type": response_type,
+                    "content": response_content,
+                    "action": interrupt_data.get("action"),
+                    "data": interrupt_data.get("args"),
+                }
+
+            # Normal (non-interrupted) response
+            response_content = ChatService._extract_response(result)
+            response_type = "message"
+
             # Update session title from first message
-            count_result = await db.execute(
-                select(Message).where(Message.session_id == session_id)
-            )
-            msg_count = len(count_result.scalars().all())
-            if msg_count <= 1:
-                await ChatService.update_session_title(db, session_id, message)
+            await ChatService._maybe_update_title(db, session_id, message)
 
             # Save assistant message
             await ChatService.save_message(
@@ -153,12 +157,7 @@ class ChatService:
                 message_type=response_type,
             )
 
-            result = {"type": response_type, "content": response_content}
-            if pending_action:
-                result["action"] = pending_action
-            if pending_data:
-                result["data"] = pending_data
-            return result
+            return {"type": response_type, "content": response_content}
 
         except Exception as e:
             error_msg = f"Xin lỗi, đã có lỗi xảy ra: {str(e)}"
@@ -168,63 +167,27 @@ class ChatService:
             return {"type": "error", "content": error_msg}
 
     @staticmethod
-    def _extract_pending_action(state) -> tuple:
-        """Extract the pending tool call name and arguments from interrupted state."""
-        try:
-            messages = state.values.get("messages", [])
-            for msg in reversed(messages):
-                if hasattr(msg, "tool_calls") and msg.tool_calls:
-                    tool_call = msg.tool_calls[0]
-                    action_name = tool_call.get("name", "unknown")
-                    action_args = tool_call.get("args", {})
+    def _build_confirm_message(interrupt_data: dict) -> str:
+        """Build a confirmation message from the interrupt payload."""
+        display_name = interrupt_data.get("display_name", "Thao tác")
+        args = interrupt_data.get("args", {})
+        field_labels = interrupt_data.get("field_labels", {})
 
-                    # Map tool names to human-readable Vietnamese labels
-                    action_labels = {
-                        "book_room": "Đặt phòng họp",
-                        "update_booking": "Cập nhật đặt phòng",
-                        "cancel_booking": "Hủy đặt phòng",
-                        "create_ticket": "Tạo ticket hỗ trợ",
-                        "update_ticket": "Cập nhật ticket",
-                    }
-                    display_name = action_labels.get(action_name, action_name)
-                    return display_name, action_args
-        except Exception:
-            pass
-        return "thao tác", None
+        lines = [f"⚠️ **Xác nhận: {display_name}**\n"]
 
-    @staticmethod
-    def _build_confirm_message(action: str, data: dict) -> str:
-        """Build a clean, non-duplicated confirmation message from tool call data."""
-        lines = [f"⚠️ **Xác nhận: {action}**\n"]
-
-        # Internal fields that should NOT be shown to the user
-        hidden_fields = {"user_id", "session_id"}
-
-        if data:
-            # Map common field names to Vietnamese labels
-            field_labels = {
-                "room_name": "Phòng", "room": "Phòng", "reason": "Lý do", "time": "Thời gian",
-                "customer_name": "Tên KH", "customer_phone": "SĐT",
-                "email": "Email", "note": "Ghi chú",
-                "content": "Nội dung", "description": "Mô tả",
-                "booking_id": "Mã đặt phòng", "ticket_id": "Mã ticket",
-                "status": "Trạng thái",
-            }
-            for key, value in data.items():
-                if key in hidden_fields:
-                    continue
-                if value is not None and str(value).strip():
-                    label = field_labels.get(key, key)
-                    lines.append(f"- **{label}**: {value}")
+        for key, value in args.items():
+            if value is not None and str(value).strip():
+                label = field_labels.get(key, key)
+                lines.append(f"- **{label}**: {value}")
 
         lines.append("\n---")
-        lines.append("Gõ **y** hoặc **có** để xác nhận, hoặc bất kỳ nội dung khác để hủy.")
+        lines.append("Nhấn **Xác nhận** để thực hiện, **Sửa** để chỉnh sửa, hoặc **Hủy** để hủy thao tác.")
         return "\n".join(lines)
 
     @staticmethod
     async def _invoke_graph(
         graph, config, message, user_id, user_email, session_id
-    ) -> str:
+    ) -> dict:
         """Invoke the LangGraph with a new user message."""
         input_state = {
             "messages": [HumanMessage(content=message)],
@@ -233,53 +196,38 @@ class ChatService:
             "session_id": session_id,
         }
 
-        result = await graph.ainvoke(input_state, config)
-        return ChatService._extract_response(result)
+        return await graph.ainvoke(input_state, config)
 
     @staticmethod
-    async def _handle_hitl_resume(
-        graph, config, message, user_id, user_email
-    ) -> str:
+    async def _handle_hitl_resume(graph, config, message) -> dict:
         """
-        Handle HITL confirmation resume.
-        The graph is paused before a sensitive tool node.
-        User says 'y/yes' to proceed or anything else to cancel.
+        Handle HITL confirmation resume using Command(resume=...).
+        The frontend sends a JSON payload: {"action":"approve|reject", "edits":{...}}
         """
-        user_confirms = message.strip().lower() in ["y", "yes", "có", "ok", "confirm", "đồng ý"]
+        # Try to parse structured JSON from frontend
+        try:
+            resume_payload = json.loads(message)
+        except (json.JSONDecodeError, TypeError):
+            # Fallback: treat plain text as simple approve/reject
+            text = message.strip().lower()
+            if text in ["y", "yes", "có", "ok", "confirm", "đồng ý"]:
+                resume_payload = {"action": "approve"}
+            else:
+                resume_payload = {"action": "reject"}
 
-        if user_confirms:
-            # Resume: just continue execution (tool will run)
-            result = await graph.ainvoke(None, config)
-            return ChatService._extract_response(result)
-        else:
-            # Cancel: get current state and create a ToolMessage to skip the tool
-            current_state = graph.get_state(config)
-            last_message = current_state.values.get("messages", [])[-1]
+        # Resume the graph with the structured payload
+        result = await graph.ainvoke(Command(resume=resume_payload), config)
+        return result
 
-            # Determine which node was about to execute (the interrupted node)
-            interrupted_node = current_state.next[0] if current_state.next else None
-
-            if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-                tool_call_id = last_message.tool_calls[0]["id"]
-                tool_name = last_message.tool_calls[0]["name"]
-
-                # Inject cancellation ToolMessage AS IF it came from the interrupted node.
-                # This tells LangGraph "this node already ran" so it proceeds to the NEXT
-                # node (the agent) instead of re-entering the tool node.
-                cancel_msg = ToolMessage(
-                    content=f"Người dùng đã hủy thao tác '{tool_name}'. "
-                            f"Hãy thông báo cho người dùng rằng thao tác đã bị hủy và hỏi họ muốn làm gì tiếp.",
-                    tool_call_id=tool_call_id,
-                )
-                graph.update_state(
-                    config,
-                    {"messages": [cancel_msg]},
-                    as_node=interrupted_node,
-                )
-
-            # Continue graph execution — agent sees the cancel and responds
-            result = await graph.ainvoke(None, config)
-            return ChatService._extract_response(result)
+    @staticmethod
+    async def _maybe_update_title(db: AsyncSession, session_id: str, message: str):
+        """Update session title from first message if needed."""
+        count_result = await db.execute(
+            select(Message).where(Message.session_id == session_id)
+        )
+        msg_count = len(count_result.scalars().all())
+        if msg_count <= 1: # only update title if there is only one message
+            await ChatService.update_session_title(db, session_id, message)
 
     @staticmethod
     def _extract_response(result: dict) -> str:

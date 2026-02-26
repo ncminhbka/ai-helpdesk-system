@@ -3,10 +3,113 @@ import { useAuth } from '../contexts/AuthContext'
 
 const API_BASE = 'http://localhost:8000/api/v1'
 
+// Vietnamese labels for common field names
+const FIELD_LABELS = {
+    room_name: 'Phòng', reason: 'Lý do', time: 'Thời gian',
+    customer_name: 'Tên KH', customer_phone: 'SĐT',
+    email: 'Email', note: 'Ghi chú',
+    booking_id: 'Mã đặt phòng', ticket_id: 'Mã ticket',
+    status: 'Trạng thái', content: 'Nội dung', description: 'Mô tả',
+}
+
+/**
+ * ConfirmCard — Inline confirmation widget for HITL actions.
+ * Shows tool args as editable fields + Approve / Reject buttons.
+ */
+function ConfirmCard({ data, fieldLabels, onRespond, disabled }) {
+    const [editMode, setEditMode] = useState(false)
+    const [edits, setEdits] = useState({})
+
+    // Merge server-provided labels with our defaults
+    const labels = { ...FIELD_LABELS, ...(fieldLabels || {}) }
+
+    const handleFieldChange = (key, value) => {
+        setEdits(prev => ({ ...prev, [key]: value }))
+    }
+
+    const handleApprove = () => {
+        const hasEdits = Object.keys(edits).length > 0
+        onRespond(JSON.stringify({
+            action: 'approve',
+            ...(hasEdits ? { edits } : {}),
+        }))
+    }
+
+    const handleReject = () => {
+        onRespond(JSON.stringify({ action: 'reject' }))
+    }
+
+    if (!data || Object.keys(data).length === 0) {
+        return (
+            <div className="mt-3 flex gap-2">
+                <button onClick={handleApprove} disabled={disabled}
+                    className="btn-primary px-4 py-1.5 text-sm disabled:opacity-50">
+                    ✅ Xác nhận
+                </button>
+                <button onClick={handleReject} disabled={disabled}
+                    className="px-4 py-1.5 text-sm rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/30 transition disabled:opacity-50">
+                    ❌ Hủy
+                </button>
+            </div>
+        )
+    }
+
+    return (
+        <div className="mt-3">
+            {/* Data fields */}
+            <div className="space-y-2 mb-4">
+                {Object.entries(data).map(([key, value]) => (
+                    <div key={key} className="flex items-center gap-2 text-sm">
+                        <span className="text-gray-400 min-w-[80px] text-right">
+                            {labels[key] || key}:
+                        </span>
+                        {editMode ? (
+                            <input
+                                type="text"
+                                defaultValue={value}
+                                onChange={(e) => handleFieldChange(key, e.target.value)}
+                                className="flex-1 px-2 py-1 rounded bg-white/5 border border-white/10 text-gray-200 text-sm focus:border-blue-500/50 focus:outline-none"
+                            />
+                        ) : (
+                            <span className="text-gray-200">{String(value)}</span>
+                        )}
+                    </div>
+                ))}
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex gap-2 flex-wrap">
+                <button onClick={handleApprove} disabled={disabled}
+                    className="btn-primary px-4 py-1.5 text-sm disabled:opacity-50">
+                    ✅ Xác nhận
+                </button>
+                {!editMode && (
+                    <button onClick={() => setEditMode(true)} disabled={disabled}
+                        className="px-4 py-1.5 text-sm rounded-lg bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 transition disabled:opacity-50">
+                        ✏️ Sửa
+                    </button>
+                )}
+                {editMode && (
+                    <button onClick={() => { setEditMode(false); setEdits({}) }} disabled={disabled}
+                        className="px-4 py-1.5 text-sm rounded-lg bg-gray-500/20 text-gray-300 hover:bg-gray-500/30 transition disabled:opacity-50">
+                        ↩️ Hủy sửa
+                    </button>
+                )}
+                <button onClick={handleReject} disabled={disabled}
+                    className="px-4 py-1.5 text-sm rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/30 transition disabled:opacity-50">
+                    ❌ Hủy
+                </button>
+            </div>
+        </div>
+    )
+}
+
+
 export default function ChatInterface({ session, onSessionUpdate }) {
     const [messages, setMessages] = useState([])
     const [inputValue, setInputValue] = useState('')
     const [isLoading, setIsLoading] = useState(false)
+    const [pendingConfirm, setPendingConfirm] = useState(null) // {index, data, fieldLabels}
     const messagesEndRef = useRef(null)
     const inputRef = useRef(null)
     const { token } = useAuth()
@@ -17,6 +120,7 @@ export default function ChatInterface({ session, onSessionUpdate }) {
             loadMessages()
         } else {
             setMessages([])
+            setPendingConfirm(null)
         }
     }, [session?.session_id])
 
@@ -27,8 +131,8 @@ export default function ChatInterface({ session, onSessionUpdate }) {
 
     // Focus input when ready
     useEffect(() => {
-        if (!isLoading) inputRef.current?.focus()
-    }, [isLoading])
+        if (!isLoading && !pendingConfirm) inputRef.current?.focus()
+    }, [isLoading, pendingConfirm])
 
     const loadMessages = async () => {
         try {
@@ -37,28 +141,55 @@ export default function ChatInterface({ session, onSessionUpdate }) {
             })
             if (response.ok) {
                 const data = await response.json()
-                setMessages(data.messages || [])
+                const msgs = data.messages || []
+                setMessages(msgs)
+
+                // Check if last message is an unresolved confirm
+                const lastMsg = msgs[msgs.length - 1]
+                if (lastMsg?.message_type === 'confirm' && lastMsg?.role === 'assistant') {
+                    // Try to parse metadata for structured data
+                    const meta = lastMsg.metadata || {}
+                    setPendingConfirm({
+                        index: msgs.length - 1,
+                        data: meta.args || {},
+                        fieldLabels: meta.field_labels || {},
+                    })
+                } else {
+                    setPendingConfirm(null)
+                }
             }
         } catch (err) {
             console.error('Failed to load messages:', err)
         }
     }
 
-    const sendMessage = async (e) => {
-        e.preventDefault()
-        if (!inputValue.trim() || isLoading || !session) return
+    /**
+     * Send a message to the backend. Can be called from:
+     * 1. Normal text input (form submit)
+     * 2. ConfirmCard buttons (structured JSON payload)
+     */
+    const sendMessage = async (e, overrideMessage = null) => {
+        if (e) e.preventDefault()
+        const messageToSend = overrideMessage || inputValue.trim()
+        if (!messageToSend || isLoading || !session) return
 
-        const userMessage = inputValue.trim()
-        setInputValue('')
+        if (!overrideMessage) setInputValue('')
 
-        // Add user message immediately
-        const newUserMsg = {
-            role: 'user',
-            content: userMessage,
-            message_type: 'message',
-            created_at: new Date().toISOString()
+        // Clear pending confirm when responding
+        setPendingConfirm(null)
+
+        // Add user message immediately (don't show raw JSON for confirm responses)
+        const isStructuredResponse = overrideMessage && overrideMessage.startsWith('{')
+        if (!isStructuredResponse) {
+            const newUserMsg = {
+                role: 'user',
+                content: messageToSend,
+                message_type: 'message',
+                created_at: new Date().toISOString()
+            }
+            setMessages(prev => [...prev, newUserMsg])
         }
-        setMessages(prev => [...prev, newUserMsg])
+
         setIsLoading(true)
 
         try {
@@ -70,7 +201,7 @@ export default function ChatInterface({ session, onSessionUpdate }) {
                 },
                 body: JSON.stringify({
                     session_id: session.session_id,
-                    message: userMessage
+                    message: messageToSend
                 })
             })
 
@@ -80,15 +211,29 @@ export default function ChatInterface({ session, onSessionUpdate }) {
                     role: 'assistant',
                     content: data.content,
                     message_type: data.type,
+                    metadata: data.data ? { args: data.data, field_labels: {} } : null,
                     created_at: new Date().toISOString()
                 }
                 setMessages(prev => [...prev, assistantMsg])
 
+                // If this is a confirm response, set pending confirm
+                if (data.type === 'confirm' && data.data) {
+                    setMessages(prev => {
+                        const idx = prev.length - 1
+                        setPendingConfirm({
+                            index: idx,
+                            data: data.data,
+                            fieldLabels: {},
+                        })
+                        return prev
+                    })
+                }
+
                 // Update session title if first message
-                if (onSessionUpdate && messages.length === 0) {
+                if (onSessionUpdate && messages.length === 0 && !isStructuredResponse) {
                     onSessionUpdate({
                         ...session,
-                        title: userMessage.slice(0, 50) + (userMessage.length > 50 ? '...' : '')
+                        title: messageToSend.slice(0, 50) + (messageToSend.length > 50 ? '...' : '')
                     })
                 }
             } else {
@@ -105,6 +250,11 @@ export default function ChatInterface({ session, onSessionUpdate }) {
         } finally {
             setIsLoading(false)
         }
+    }
+
+    /** Called by ConfirmCard buttons */
+    const handleConfirmRespond = (payload) => {
+        sendMessage(null, payload)
     }
 
     // Empty state
@@ -168,6 +318,16 @@ export default function ChatInterface({ session, onSessionUpdate }) {
                                         </div>
                                     )}
                                     <div className="markdown-content whitespace-pre-wrap">{msg.content}</div>
+
+                                    {/* Render ConfirmCard for the pending confirm message */}
+                                    {pendingConfirm && pendingConfirm.index === idx && (
+                                        <ConfirmCard
+                                            data={pendingConfirm.data}
+                                            fieldLabels={pendingConfirm.fieldLabels}
+                                            onRespond={handleConfirmRespond}
+                                            disabled={isLoading}
+                                        />
+                                    )}
                                 </div>
                             </div>
                         ))}
@@ -196,13 +356,13 @@ export default function ChatInterface({ session, onSessionUpdate }) {
                             type="text"
                             value={inputValue}
                             onChange={(e) => setInputValue(e.target.value)}
-                            placeholder="Type your message..."
-                            disabled={isLoading}
+                            placeholder={pendingConfirm ? "Đang chờ xác nhận..." : "Type your message..."}
+                            disabled={isLoading || !!pendingConfirm}
                             className="flex-1 input-dark disabled:opacity-50"
                         />
                         <button
                             type="submit"
-                            disabled={!inputValue.trim() || isLoading}
+                            disabled={!inputValue.trim() || isLoading || !!pendingConfirm}
                             className="btn-primary px-6 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

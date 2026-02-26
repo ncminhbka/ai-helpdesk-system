@@ -26,6 +26,7 @@ class Assistant:
     def __init__(self, runnable: Runnable):
         self.runnable = runnable
 
+    # invoke the runnable with the state and config until it produces a valid response
     async def __call__(self, state: AgentState, config: RunnableConfig):
         max_retries = 3
 
@@ -85,6 +86,7 @@ class CompleteOrEscalate(BaseModel):
 
 # ==================== TRANSFER SCHEMAS ====================
 
+# Fake tooks for primary assistant to transfer to specialized agents
 class ToBookingAgent(BaseModel):
     """Transfer to the Booking Agent for meeting room operations."""
     request: str = Field(

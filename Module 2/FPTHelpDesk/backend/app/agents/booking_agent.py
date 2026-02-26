@@ -18,14 +18,8 @@ load_dotenv()
 
 # ==================== TOOL DEFINITIONS ====================
 
-# Safe tools: read-only, no HITL needed
-booking_safe_tools = [track_booking]
-
-# Sensitive tools: write operations, HITL confirmation
-booking_sensitive_tools = [book_room, update_booking, cancel_booking]
-
-# All booking tools
-booking_tools = booking_safe_tools + booking_sensitive_tools
+# All booking tools (HITL interrupt logic is inside each sensitive tool)
+booking_tools = [track_booking, book_room, update_booking, cancel_booking]
 
 
 # ==================== RUNNABLE CREATION ====================

@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 
 
 class BookingResponse(BaseModel):
+    """Schema cho phản hồi thông tin đặt phòng."""
     booking_id: int
     room_name: Optional[str]
     customer_name: Optional[str]
@@ -18,11 +19,11 @@ class BookingResponse(BaseModel):
 
 
 class BookingData(BaseModel):
-    """Schema for book_room tool arguments."""
-    room_name: Optional[str] = Field(default=None, description="Name of the meeting room (e.g. CR7 tầng 2, OKOK tầng 3)")
-    reason: str = Field(description="Reason for booking the room")
-    time: str = Field(description="Booking time in YYYY-MM-DD HH:MM format")
-    customer_name: Optional[str] = Field(default=None, description="Booker's name")
-    customer_phone: Optional[str] = Field(default=None, description="Booker's phone number")
-    note: Optional[str] = Field(default=None, description="Additional notes")
-    email: Optional[str] = Field(default=None, description="Booker's email address")
+    """Schema mô tả dữ liệu cần thiết cho công cụ đặt phòng (book_room tool)."""
+    room_name: Optional[str] = Field(default=None, description="Tên phòng họp (VD: CR7 tầng 2, OKOK tầng 3)")
+    reason: str = Field(description="Lý do đặt phòng")
+    time: str = Field(description="Thời gian đặt phòng định dạng YYYY-MM-DD HH:MM")
+    customer_name: Optional[str] = Field(default=None, description="Tên người đặt")
+    customer_phone: Optional[str] = Field(default=None, description="Số điện thoại người đặt")
+    note: Optional[str] = Field(default=None, description="Ghi chú thêm")
+    email: Optional[str] = Field(default=None, description="Địa chỉ email người đặt")

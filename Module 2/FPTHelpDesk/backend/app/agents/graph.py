@@ -5,8 +5,7 @@ This module defines the full StateGraph with:
 - Primary assistant for intent routing
 - 4 specialized agent workflows (Booking, Ticket, FAQ, IT Support)
 - Entry/exit node utilities for agent handoffs
-- Tool nodes with safe/sensitive separation
-- Conditional HITL via interrupt_before
+- Unified tool nodes per agent (HITL is handled inside tools via interrupt())
 """
 from langchain_core.messages import ToolMessage
 from langgraph.graph import StateGraph, START, END
@@ -14,7 +13,6 @@ from langgraph.prebuilt import tools_condition, ToolNode
 from langgraph.checkpoint.memory import MemorySaver
 
 from app.utils.state import AgentState
-from app.core.config import settings
 
 # Import agents
 from app.agents.base_agent import (
@@ -25,12 +23,8 @@ from app.agents.base_agent import (
     ToITSupportAgent,
 )
 from app.agents.primary_assistant import get_primary_agent
-from app.agents.booking_agent import (
-    get_booking_agent, booking_safe_tools, booking_sensitive_tools, booking_tools,
-)
-from app.agents.ticket_agent import (
-    get_ticket_agent, ticket_safe_tools, ticket_sensitive_tools, ticket_tools,
-)
+from app.agents.booking_agent import get_booking_agent, booking_tools
+from app.agents.ticket_agent import get_ticket_agent, ticket_tools
 from app.agents.faq_agent import get_faq_agent, faq_tools
 from app.agents.it_support_agent import get_it_support_agent, it_support_tools
 
@@ -115,13 +109,9 @@ def route_booking_agent(state: AgentState):
     tool_calls = state["messages"][-1].tool_calls
     if tool_calls:
         tool_name = tool_calls[0]["name"]
-
         if tool_name == "CompleteOrEscalate":
             return "leave_skill"
-        elif tool_name in [t.name for t in booking_safe_tools]:
-            return "booking_safe_tools"
-        elif tool_name in [t.name for t in booking_sensitive_tools]:
-            return "booking_sensitive_tools"
+        return "booking_tools"
 
     return END
 
@@ -135,13 +125,9 @@ def route_ticket_agent(state: AgentState):
     tool_calls = state["messages"][-1].tool_calls
     if tool_calls:
         tool_name = tool_calls[0]["name"]
-
         if tool_name == "CompleteOrEscalate":
             return "leave_skill"
-        elif tool_name in [t.name for t in ticket_safe_tools]:
-            return "ticket_safe_tools"
-        elif tool_name in [t.name for t in ticket_sensitive_tools]:
-            return "ticket_sensitive_tools"
+        return "ticket_tools"
 
     return END
 
@@ -198,12 +184,13 @@ def create_graph():
     The graph structure:
     START → fetch_user_info → route_to_workflow →
         ├── primary_assistant → route to enter_* nodes
-        ├── booking workflow (enter → agent → safe/sensitive tools → back to agent)
-        ├── ticket workflow (enter → agent → safe/sensitive tools → back to agent)
+        ├── booking workflow (enter → agent → tools → back to agent)
+        ├── ticket workflow (enter → agent → tools → back to agent)
         ├── faq workflow (enter → agent → tools → back to agent)
         └── it_support workflow (enter → agent → tools → back to agent)
 
-    HITL: When ENABLE_HITL=true, sensitive tools require interrupt_before.
+    HITL: When ENABLE_HITL=true, sensitive tools use dynamic interrupt()
+    inside the tool functions themselves — no interrupt_before needed.
     """
     builder = StateGraph(AgentState)
 
@@ -242,42 +229,36 @@ def create_graph():
     # ==================== BOOKING WORKFLOW ====================
     builder.add_node("enter_booking", create_entry_node("Booking Agent", "booking_agent"))
     builder.add_node("booking_agent", get_booking_agent())
-    builder.add_node("booking_safe_tools", ToolNode(booking_safe_tools))
-    builder.add_node("booking_sensitive_tools", ToolNode(booking_sensitive_tools))
+    builder.add_node("booking_tools", ToolNode(booking_tools))
 
     builder.add_edge("enter_booking", "booking_agent")
     builder.add_conditional_edges(
         "booking_agent",
         route_booking_agent,
         {
-            "booking_safe_tools": "booking_safe_tools",
-            "booking_sensitive_tools": "booking_sensitive_tools",
+            "booking_tools": "booking_tools",
             "leave_skill": "leave_skill",
             END: END,
         },
     )
-    builder.add_edge("booking_safe_tools", "booking_agent")
-    builder.add_edge("booking_sensitive_tools", "booking_agent")
+    builder.add_edge("booking_tools", "booking_agent")
 
     # ==================== TICKET WORKFLOW ====================
     builder.add_node("enter_ticket", create_entry_node("Ticket Agent", "ticket_agent"))
     builder.add_node("ticket_agent", get_ticket_agent())
-    builder.add_node("ticket_safe_tools", ToolNode(ticket_safe_tools))
-    builder.add_node("ticket_sensitive_tools", ToolNode(ticket_sensitive_tools))
+    builder.add_node("ticket_tools", ToolNode(ticket_tools))
 
     builder.add_edge("enter_ticket", "ticket_agent")
     builder.add_conditional_edges(
         "ticket_agent",
         route_ticket_agent,
         {
-            "ticket_safe_tools": "ticket_safe_tools",
-            "ticket_sensitive_tools": "ticket_sensitive_tools",
+            "ticket_tools": "ticket_tools",
             "leave_skill": "leave_skill",
             END: END,
         },
     )
-    builder.add_edge("ticket_safe_tools", "ticket_agent")
-    builder.add_edge("ticket_sensitive_tools", "ticket_agent")
+    builder.add_edge("ticket_tools", "ticket_agent")
 
     # ==================== FAQ WORKFLOW ====================
     builder.add_node("enter_faq", create_entry_node("FAQ Agent", "faq_agent"))
@@ -313,17 +294,8 @@ def create_graph():
     )
     builder.add_edge("it_support_tools", "it_support_agent")
 
-    # ----- Compile with checkpointer -----
+    # ----- Compile with checkpointer (no interrupt_before needed) -----
     checkpointer = MemorySaver()
-
-    # Conditionally apply HITL interrupt_before on sensitive tools
-    interrupt_nodes = []
-    if settings.ENABLE_HITL:
-        interrupt_nodes = ["booking_sensitive_tools", "ticket_sensitive_tools"]
-
-    graph = builder.compile(
-        checkpointer=checkpointer,
-        interrupt_before=interrupt_nodes if interrupt_nodes else None,
-    )
+    graph = builder.compile(checkpointer=checkpointer)
 
     return graph
