@@ -4,7 +4,7 @@ Uses Tavily for web search to find IT troubleshooting solutions.
 """
 import os
 from langchain_core.tools import tool
-from langchain_community.tools.tavily_search import TavilySearchResults
+from langchain_tavily import TavilySearch
 from dotenv import load_dotenv
 
 load_dotenv()

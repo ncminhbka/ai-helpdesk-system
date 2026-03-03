@@ -1,68 +1,19 @@
 """
 Ticket tools for the Ticket Agent.
 Handles support ticket creation, tracking, and updating.
-Uses dynamic interrupt() for HITL confirmation on sensitive operations.
 """
 from langchain_core.tools import tool
 from sqlalchemy import select
-from langgraph.types import interrupt
 
 from app.core.database import async_session_maker
-from app.core.config import settings
 from app.models.ticket import Ticket, TicketStatus
-
-
-# ==================== HITL HELPERS ====================
-
-_HIDDEN_FIELDS = {"user_id", "session_id"}
-
-_FIELD_LABELS = {
-    "content": "Nội dung", "description": "Mô tả",
-    "customer_name": "Tên KH", "customer_phone": "SĐT",
-    "email": "Email", "ticket_id": "Mã ticket", "status": "Trạng thái",
-}
-
-_ACTION_LABELS = {
-    "create_ticket": "Tạo ticket hỗ trợ",
-    "update_ticket": "Cập nhật ticket",
-}
-
-
-def _hitl_gate(tool_name: str, args: dict) -> dict | None:
-    """
-    HITL gate using dynamic interrupt().
-    Returns the (possibly edited) args if approved, or None if rejected.
-    Only activates when ENABLE_HITL is True.
-    """
-    if not settings.ENABLE_HITL:
-        return args
-
-    visible_args = {
-        k: v for k, v in args.items()
-        if k not in _HIDDEN_FIELDS and v is not None
-    }
-
-    response = interrupt({
-        "action": tool_name,
-        "display_name": _ACTION_LABELS.get(tool_name, tool_name),
-        "args": visible_args,
-        "field_labels": {k: v for k, v in _FIELD_LABELS.items() if k in visible_args},
-    })
-
-    if isinstance(response, dict) and response.get("action") == "approve":
-        edits = response.get("edits", {})
-        merged = {**args}
-        for key, value in edits.items():
-            if key in merged and value is not None and str(value).strip():
-                merged[key] = value
-        return merged
-
-    return None
+from app.utils.hitl import hitl_protected
 
 
 # ==================== TOOLS ====================
 
 @tool
+@hitl_protected(display_name="Tạo ticket hỗ trợ", cancel_message="❌ Người dùng đã hủy thao tác tạo ticket.")
 async def create_ticket(
     content: str,
     description: str,
@@ -82,23 +33,6 @@ async def create_ticket(
         email: Customer's email (optional)
         user_id: User ID from context (injected automatically)
     """
-    # HITL gate
-    args = _hitl_gate("create_ticket", {
-        "content": content, "description": description,
-        "customer_name": customer_name, "customer_phone": customer_phone,
-        "email": email, "user_id": user_id,
-    })
-    if args is None:
-        return "❌ Người dùng đã hủy thao tác tạo ticket."
-
-    # Unpack (possibly edited) args
-    content = args["content"]
-    description = args["description"]
-    customer_name = args.get("customer_name")
-    customer_phone = args.get("customer_phone")
-    email = args.get("email")
-    user_id = args.get("user_id")
-
     async with async_session_maker() as session:
         ticket = Ticket(
             user_id=user_id or 0,
@@ -130,7 +64,7 @@ async def track_ticket(
     user_id: int = None,
 ) -> str:
     """
-    Track ticket status. Provide ticket_id for specific ticket,
+    Track ticket status. Provide ticket_id for a specific ticket,
     or leave empty to see all tickets for the current user.
 
     Args:
@@ -160,6 +94,7 @@ async def track_ticket(
 
 
 @tool
+@hitl_protected(display_name="Cập nhật ticket", cancel_message="❌ Người dùng đã hủy thao tác cập nhật ticket.")
 async def update_ticket(
     ticket_id: int,
     content: str = None,
@@ -181,24 +116,6 @@ async def update_ticket(
         customer_phone: Updated phone (optional)
         email: Updated email (optional)
     """
-    # HITL gate
-    args = _hitl_gate("update_ticket", {
-        "ticket_id": ticket_id, "content": content, "description": description,
-        "status": status, "customer_name": customer_name,
-        "customer_phone": customer_phone, "email": email,
-    })
-    if args is None:
-        return "❌ Người dùng đã hủy thao tác cập nhật ticket."
-
-    # Unpack (possibly edited) args
-    ticket_id = args["ticket_id"]
-    content = args.get("content")
-    description = args.get("description")
-    status = args.get("status")
-    customer_name = args.get("customer_name")
-    customer_phone = args.get("customer_phone")
-    email = args.get("email")
-
     async with async_session_maker() as session:
         result = await session.execute(
             select(Ticket).where(Ticket.ticket_id == ticket_id)
@@ -248,9 +165,9 @@ def _format_ticket(ticket: Ticket) -> str:
         f"🎫 Ticket #{ticket.ticket_id}\n"
         f"  📝 Content: {ticket.content}\n"
         f"  📋 Description: {ticket.description or 'N/A'}\n"
+        f"  🕒 Created: {time_str}\n"
         f"  👤 Name: {ticket.customer_name or 'N/A'}\n"
         f"  📞 Phone: {ticket.customer_phone or 'N/A'}\n"
         f"  📧 Email: {ticket.email or 'N/A'}\n"
-        f"  🕒 Created: {time_str}\n"
         f"  📌 Status: {ticket.status}"
     )
