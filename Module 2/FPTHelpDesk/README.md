@@ -1,12 +1,12 @@
 # 🏢 FPT HelpDesk — Multi-Agent AI Assistant
 
-Hệ thống chatbot hỗ trợ nội bộ FPT sử dụng **LangGraph** multi-agent architecture + **FastAPI** + **React (Vite)**.
+Hệ thống chatbot hỗ trợ nội bộ FPT sử dụng **LangGraph** multi-agent architecture + **FastAPI** + **React (Vite)** + **PostgreSQL + pgvector**.
 
 ## ✨ Tính năng
 
 - 📋 **Ticket Management** — Tạo, tra cứu, cập nhật ticket hỗ trợ
 - 📅 **Room Booking** — Đặt, tra cứu, cập nhật, hủy phòng họp
-- 📖 **FAQ / Chính sách** — Tra cứu chính sách từ tài liệu (RAG)
+- 📖 **FAQ / Chính sách** — Tra cứu chính sách từ tài liệu (RAG với pgvector)
 - 🔧 **IT Support** — Hỗ trợ kỹ thuật (web search)
 - ⚠️ **HITL Confirmation** — Xác nhận / sửa / hủy trước khi thực hiện thao tác nhạy cảm
 
@@ -14,26 +14,33 @@ Hệ thống chatbot hỗ trợ nội bộ FPT sử dụng **LangGraph** multi-a
 
 ```
 FPTHelpDesk/
+├── docker-compose.yml        ← Chạy toàn bộ stack bằng 1 lệnh
+├── docker/
+│   └── init.sql              ← Tự động bật pgvector extension
+├── docs/                     ← Tài liệu chính sách PDF (cho RAG)
 ├── backend/
 │   ├── app/
-│   │   ├── agents/       # LangGraph agents + graph
-│   │   ├── api/          # FastAPI endpoints
-│   │   ├── core/         # Config, database
-│   │   ├── models/       # SQLAlchemy models
-│   │   ├── schemas/      # Pydantic schemas
-│   │   ├── services/     # Business logic (chat_service)
-│   │   ├── tools/        # LangChain tools (booking, ticket)
-│   │   ├── utils/        # Helpers, state, RAG
-│   │   └── main.py       # Entry point
+│   │   ├── agents/           ← LangGraph agents (domain-driven)
+│   │   │   ├── shared/       ← base.py, graph.py
+│   │   │   ├── primary/      ← Primary assistant
+│   │   │   ├── booking/      ← Booking agent + tools + prompt
+│   │   │   ├── ticket/       ← Ticket agent + tools + prompt
+│   │   │   ├── faq/          ← FAQ agent + RAG tools + prompt
+│   │   │   └── it_support/   ← IT Support agent + search tools
+│   │   ├── api/              ← FastAPI endpoints
+│   │   ├── core/             ← Config, database
+│   │   ├── models/           ← SQLAlchemy models
+│   │   ├── services/         ← Business logic
+│   │   └── main.py
+│   ├── ingest.py             ← Script nhập tài liệu vào pgvector
+│   ├── Dockerfile
 │   ├── requirements.txt
-│   └── .env
-├── frontend/
-│   ├── src/
-│   │   ├── components/   # React components
-│   │   ├── contexts/     # AuthContext
-│   │   └── App.jsx
-│   └── package.json
-└── docs/                 # Tài liệu chính sách (cho RAG)
+│   └── .env                  ← Cấu hình (KHÔNG commit lên git)
+└── frontend/
+    ├── src/
+    ├── nginx.conf            ← Proxy /api/ → backend
+    ├── Dockerfile
+    └── package.json
 ```
 
 ---
@@ -42,30 +49,14 @@ FPTHelpDesk/
 
 ### Yêu cầu
 
-- **Python** 3.10+
-- **Node.js** 18+
-- **Conda** (khuyến nghị) hoặc **venv**
+- **Docker Desktop** (đã cài và đang chạy)
+- **Python 3.11+** + **Conda** (chỉ cần để chạy `ingest.py` lần đầu)
 
-### 1. Clone & tạo môi trường
+---
 
-```bash
-# Tạo conda environment
-conda create -n intern_env python=3.11 -y
-conda activate intern_env
-```
+### Bước 1: Cấu hình file `.env`
 
-### 2. Cài đặt Backend
-
-```bash
-cd backend
-
-# Cài dependencies
-pip install -r requirements.txt
-```
-
-### 3. Cấu hình file `.env`
-
-Tạo file `backend/.env` (hoặc sửa file có sẵn):
+Mở file `backend/.env` và điền thông tin của bạn:
 
 ```env
 # OpenAI (bắt buộc)
@@ -74,81 +65,120 @@ OPENAI_API_KEY=sk-proj-...
 # Tavily - IT Support search (bắt buộc)
 TAVILY_API_KEY=tvly-...
 
-# Database
-DATABASE_URL=sqlite+aiosqlite:///./fpt_helpdesk.db
+# Database PostgreSQL
+DB_USER=postgres
+DB_PASSWORD=your_password_here
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=fpt_helpdesk
 
 # Security
 SECRET_KEY=your-super-secret-key-change-in-production
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=1440
 
-# RAG - đường dẫn tới thư mục docs
+# RAG
 DOCS_DIR=../docs
-CHROMA_PERSIST_DIR=./chroma_db
 
-# HITL - bật/tắt xác nhận trước thao tác nhạy cảm
+# HITL - xác nhận trước thao tác nhạy cảm (true/false)
 ENABLE_HITL=true
 
 # LangSmith (tùy chọn - monitoring)
-LANGCHAIN_TRACING_V2=true
-LANGCHAIN_API_KEY=lsv2_pt_...
-LANGCHAIN_PROJECT=FPTHelpDesk
+# LANGCHAIN_TRACING_V2=true
+# LANGCHAIN_API_KEY=lsv2_pt_...
+# LANGCHAIN_PROJECT=FPTHelpDesk
 ```
-
-### 4. Chạy Backend
-
-```bash
-cd backend && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-Backend sẽ chạy tại: **http://localhost:8000**
-
-- Swagger docs: http://localhost:8000/docs
-- Health check: http://localhost:8000/health
-
-### 5. Cài đặt & chạy Frontend
-
-```bash
-cd frontend
-
-# Cài dependencies (lần đầu)
-npm install
-
-# Chạy dev server
-npm run dev
-```
-
-Frontend sẽ chạy tại: **http://localhost:5173**
 
 ---
 
-## 🔧 Cấu hình quan trọng
+### Bước 2: Khởi động toàn bộ stack
 
-| Biến | Mô tả | Mặc định |
-|------|--------|----------|
-| `OPENAI_API_KEY` | API key OpenAI (bắt buộc) | — |
-| `TAVILY_API_KEY` | API key Tavily cho IT Support | — |
-| `ENABLE_HITL` | Bật HITL confirmation cho thao tác nhạy cảm | `true` |
-| `DATABASE_URL` | Connection string database | SQLite local |
-| `SECRET_KEY` | JWT secret key | cần đổi khi production |
+```bash
+# Chạy tại thư mục gốc FPTHelpDesk/
+docker compose up -d --build
+```
+
+Lệnh này sẽ tự động:
+1. 🐘 Khởi động **PostgreSQL + pgvector** (port 5432)
+2. ⚙️ Build và khởi động **FastAPI backend** (port 8000)
+3. 🌐 Build và khởi động **React frontend qua nginx** (port 80)
+
+---
+
+### Bước 3: Nhập tài liệu vào pgvector (chỉ cần làm 1 lần)
+
+> Đảm bảo stack đã chạy và `DB_HOST=localhost` trong `.env`
+
+```bash
+cd backend
+conda activate intern_env
+python ingest.py
+```
+
+Sau lần đầu, tài liệu được lưu trong PostgreSQL — không cần chạy lại trừ khi tài liệu thay đổi.
+
+---
+
+### Bước 4: Truy cập ứng dụng
+
+| Service | URL |
+|---------|-----|
+| 🌐 Frontend | http://localhost |
+| ⚙️ Backend API | http://localhost:8000 |
+| 📋 Swagger Docs | http://localhost:8000/docs |
+| ❤️ Health check | http://localhost:8000/health |
+
+---
+
+## 🛑 Hướng dẫn tắt
+
+```bash
+# Tắt tất cả service (giữ nguyên data)
+docker compose down
+
+# Tắt và XÓA toàn bộ data (reset hoàn toàn)
+docker compose down -v
+```
+
+---
+
+## 🔧 Các lệnh thường dùng
+
+```bash
+# Xem trạng thái các container
+docker compose ps
+
+# Xem log realtime
+docker compose logs -f              # Tất cả service
+docker compose logs -f backend      # Chỉ backend
+docker compose logs -f db           # Chỉ database
+
+# Restart một service
+docker compose restart backend
+
+# Vào shell PostgreSQL
+docker exec -it fpt_helpdesk_db psql -U postgres -d fpt_helpdesk
+
+# Re-ingest khi tài liệu thay đổi
+cd backend && python ingest.py --force
+```
 
 ---
 
 ## 🧪 Kiểm tra nhanh
 
-1. Mở **http://localhost:5173** trên trình duyệt
+1. Mở **http://localhost** trên trình duyệt
 2. Đăng ký tài khoản mới hoặc đăng nhập
 3. Tạo session mới → nhắn thử:
-   - `"Đặt phòng CR7 lúc 10:00 ngày mai"` → test HITL confirm
-   - `"Tra cứu booking"` → test safe tool (không cần confirm)
-   - `"Tạo ticket lỗi mạng"` → test ticket HITL
+   - `"Đặt phòng CR7 lúc 10:00 ngày mai"` → test Booking + HITL confirm
+   - `"Tra cứu booking của tôi"` → test safe tool
+   - `"Tạo ticket lỗi mạng"` → test Ticket + HITL
    - `"Chính sách nghỉ phép"` → test FAQ / RAG
 
 ---
 
 ## 📌 Ghi chú
 
-- Database SQLite sẽ tự tạo file `fpt_helpdesk.db` khi chạy lần đầu
-- ChromaDB (vector store) sẽ cache tại `chroma_db/` sau lần ingest đầu tiên
-- Khi `ENABLE_HITL=true`, các thao tác tạo/sửa/xóa sẽ yêu cầu xác nhận trước khi thực hiện
-- Đổi `ENABLE_HITL=false` để tắt xác nhận (tools chạy trực tiếp)
+- **HITL**: Khi `ENABLE_HITL=true`, các thao tác tạo/sửa/xóa sẽ yêu cầu xác nhận. Đặt `ENABLE_HITL=false` để tắt.
+- **Agent State**: Context hội thoại được lưu trong PostgreSQL — reload trang vẫn giữ context.
+- **pgvector**: Embeddings của tài liệu chính sách được lưu trong bảng `langchain_pg_embedding`.
