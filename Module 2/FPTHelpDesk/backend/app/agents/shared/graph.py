@@ -15,18 +15,18 @@ from langgraph.checkpoint.memory import MemorySaver
 from app.utils.state import AgentState
 
 # Import agents
-from app.agents.base_agent import (
+from app.agents.shared.base import (
     CompleteOrEscalate,
     ToBookingAgent,
     ToTicketAgent,
     ToFAQAgent,
     ToITSupportAgent,
 )
-from app.agents.primary_assistant import get_primary_agent
-from app.agents.booking_agent import get_booking_agent, booking_tools
-from app.agents.ticket_agent import get_ticket_agent, ticket_tools
-from app.agents.faq_agent import get_faq_agent, faq_tools
-from app.agents.it_support_agent import get_it_support_agent, it_support_tools
+from app.agents.primary.agent import get_primary_agent
+from app.agents.booking.agent import get_booking_agent, booking_tools
+from app.agents.ticket.agent import get_ticket_agent, ticket_tools
+from app.agents.faq.agent import get_faq_agent, faq_tools
+from app.agents.it_support.agent import get_it_support_agent, it_support_tools
 
 
 # ==================== UTILITY FUNCTIONS ====================
@@ -177,7 +177,7 @@ def route_to_workflow(state: AgentState):
 
 # ==================== GRAPH CONSTRUCTION ====================
 
-def create_graph():
+def create_graph(checkpointer=None):
     """
     Build and return the compiled LangGraph StateGraph.
 
@@ -295,7 +295,6 @@ def create_graph():
     builder.add_edge("it_support_tools", "it_support_agent")
 
     # ----- Compile with checkpointer (no interrupt_before needed) -----
-    checkpointer = MemorySaver()
     graph = builder.compile(checkpointer=checkpointer)
 
     return graph

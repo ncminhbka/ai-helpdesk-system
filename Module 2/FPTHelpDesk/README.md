@@ -98,8 +98,7 @@ LANGCHAIN_PROJECT=FPTHelpDesk
 ### 4. Chạy Backend
 
 ```bash
-cd backend
-python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+cd backend && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Backend sẽ chạy tại: **http://localhost:8000**

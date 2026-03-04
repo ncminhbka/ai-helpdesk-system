@@ -107,7 +107,7 @@ class ChatService:
 
         try:
             # Check if the graph is ALREADY in an interrupted state 
-            current_state = graph.get_state(config)
+            current_state = await graph.aget_state(config)
             is_interrupted = bool(current_state.next)
 
             if is_interrupted: # (confirmation form already shown, waiting for user response)

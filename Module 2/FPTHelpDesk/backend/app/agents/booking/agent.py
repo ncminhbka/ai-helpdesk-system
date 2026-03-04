@@ -7,9 +7,9 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import Runnable
 
-from app.agents.base_agent import Assistant, CompleteOrEscalate
-from app.tools.booking_tools import book_room, track_booking, update_booking, cancel_booking
-from app.agents.prompts import BOOKING_SYSTEM_PROMPT
+from app.agents.shared.base import Assistant, CompleteOrEscalate
+from app.agents.booking.tools import book_room, track_booking, update_booking, cancel_booking
+from app.agents.booking.prompt import BOOKING_SYSTEM_PROMPT
 from app.utils.helpers import get_vietnam_time
 from dotenv import load_dotenv
 
