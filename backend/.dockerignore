@@ -1,0 +1,23 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Local data
+*.db
+chroma_db/
+.ingest_cache.json
+
+# Environment files
+.env
+
+# IDE
+.vscode/
+.idea/
