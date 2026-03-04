@@ -1,6 +1,6 @@
 """
 PDF ingestion script for RAG knowledge base.
-Creates embeddings ONCE and persists to ChromaDB.
+Creates embeddings ONCE and persists to PostgreSQL via pgvector.
 Uses checksum-based cache invalidation to avoid re-processing.
 
 Usage:
@@ -16,7 +16,7 @@ from typing import List
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain_postgres import PGVector
 from langchain_core.documents import Document
 
 from dotenv import load_dotenv
@@ -25,11 +25,19 @@ load_dotenv()
 
 # Configuration
 DOCS_DIR = Path(os.getenv("DOCS_DIR", "../docs"))
-CHROMA_PERSIST_DIR = Path(os.getenv("CHROMA_PERSIST_DIR", "./chroma_db"))
-CACHE_FILE = CHROMA_PERSIST_DIR / ".cache_checksums.json"
+CACHE_FILE = Path(os.getenv("INGEST_CACHE_FILE", "./.ingest_cache.json"))
+COLLECTION_NAME = "fpt_policies"
 
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
+
+# Build PostgreSQL connection string from individual env vars
+DB_USER = os.getenv("DB_USER", "postgres")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "")
+DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_PORT = os.getenv("DB_PORT", "5432")
+DB_NAME = os.getenv("DB_NAME", "fpt_helpdesk")
+PG_CONNECTION = f"postgresql+psycopg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 
 def calculate_file_checksum(file_path: Path) -> str:
@@ -62,7 +70,7 @@ def load_cached_checksums() -> dict:
 
 def save_checksums(checksums: dict):
     """Save checksums to cache file."""
-    CHROMA_PERSIST_DIR.mkdir(parents=True, exist_ok=True)
+    CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(CACHE_FILE, "w") as f:
         json.dump(checksums, f, indent=2)
 
@@ -101,48 +109,40 @@ def load_pdf_documents(docs_dir: Path) -> List[Document]:
     return all_documents
 
 
-def create_vectorstore(documents: List[Document]) -> Chroma:
-    """Create ChromaDB vectorstore from documents."""
-    print("\n🔄 Creating embeddings...")
-
-    embeddings = OpenAIEmbeddings(
+def get_embeddings() -> OpenAIEmbeddings:
+    """Get OpenAI embeddings model."""
+    return OpenAIEmbeddings(
         model="text-embedding-3-small",
         api_key=os.getenv("OPENAI_API_KEY"),
     )
 
-    vectorstore = Chroma.from_documents(
+
+def create_vectorstore(documents: List[Document]) -> PGVector:
+    """Create pgvector vectorstore from documents."""
+    print("\n🔄 Creating embeddings and storing in PostgreSQL...")
+
+    embeddings = get_embeddings()
+
+    vectorstore = PGVector.from_documents(
         documents=documents,
         embedding=embeddings,
-        persist_directory=str(CHROMA_PERSIST_DIR),
-        collection_name="fpt_policies",
+        collection_name=COLLECTION_NAME,
+        connection=PG_CONNECTION,
+        pre_delete_collection=True,  # Clear old data on re-ingest
     )
 
-    print(f"✅ Created vectorstore with {len(documents)} documents")
+    print(f"✅ Stored {len(documents)} chunks in PostgreSQL (pgvector)")
     return vectorstore
 
 
-def load_vectorstore() -> Chroma:
-    """Load existing vectorstore from disk."""
-    embeddings = OpenAIEmbeddings(
-        model="text-embedding-3-small",
-        api_key=os.getenv("OPENAI_API_KEY"),
-    )
-
-    return Chroma(
-        persist_directory=str(CHROMA_PERSIST_DIR),
-        embedding_function=embeddings,
-        collection_name="fpt_policies",
-    )
-
-
-def ingest_documents(force: bool = False) -> Chroma:
+def ingest_documents(force: bool = False) -> PGVector:
     """
     Main ingestion function.
-    Creates embeddings ONCE and persists to disk.
+    Creates embeddings ONCE and persists to PostgreSQL.
     Only re-embeds if files change (checksum validation).
     """
     print("=" * 50)
-    print("FPT Knowledge Base Ingestion")
+    print("FPT Knowledge Base Ingestion (pgvector)")
     print("=" * 50)
 
     if not DOCS_DIR.exists():
@@ -157,14 +157,15 @@ def ingest_documents(force: bool = False) -> Chroma:
         return None
 
     print(f"\n📁 Documents directory: {DOCS_DIR.absolute()}")
-    print(f"💾 Vector store directory: {CHROMA_PERSIST_DIR.absolute()}")
+    print(f"🐘 PostgreSQL connection: {DB_HOST}:{DB_PORT}/{DB_NAME}")
 
     if not force:
         cached_checksums = load_cached_checksums()
 
-        if cached_checksums == current_checksums and CHROMA_PERSIST_DIR.exists():
+        if cached_checksums == current_checksums:
             print("\n✅ Using cached embeddings (no changes detected)")
-            return load_vectorstore()
+            print("   (Embeddings already stored in PostgreSQL)")
+            return None  # Embeddings already in DB, no need to return store
 
         if cached_checksums:
             print("\n📝 Changes detected:")
