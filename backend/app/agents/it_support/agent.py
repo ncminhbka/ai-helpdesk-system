@@ -7,9 +7,9 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import Runnable
 
-from app.agents.base_agent import Assistant, CompleteOrEscalate
-from app.tools.search_tools import search_it_solutions
-from app.agents.prompts import IT_SUPPORT_SYSTEM_PROMPT
+from app.agents.shared.base import Assistant, CompleteOrEscalate
+from app.agents.it_support.tools import search_it_solutions
+from app.agents.it_support.prompt import IT_SUPPORT_SYSTEM_PROMPT
 from app.utils.helpers import get_vietnam_time
 from dotenv import load_dotenv
 

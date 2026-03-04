@@ -6,10 +6,10 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import Runnable
 
-from app.agents.base_agent import (
+from app.agents.shared.base import (
     Assistant, ToBookingAgent, ToTicketAgent, ToFAQAgent, ToITSupportAgent
 )
-from app.agents.prompts import PRIMARY_SYSTEM_PROMPT
+from app.agents.primary.prompt import PRIMARY_SYSTEM_PROMPT
 from app.utils.helpers import get_vietnam_time
 from dotenv import load_dotenv
 

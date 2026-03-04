@@ -7,9 +7,9 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import Runnable
 
-from app.agents.base_agent import Assistant, CompleteOrEscalate
-from app.tools.ticket_tools import create_ticket, track_ticket, update_ticket
-from app.agents.prompts import TICKET_SYSTEM_PROMPT
+from app.agents.shared.base import Assistant, CompleteOrEscalate
+from app.agents.ticket.tools import create_ticket, track_ticket, update_ticket
+from app.agents.ticket.prompt import TICKET_SYSTEM_PROMPT
 from app.utils.helpers import get_vietnam_time
 from dotenv import load_dotenv
 

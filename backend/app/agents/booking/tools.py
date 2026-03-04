@@ -2,7 +2,9 @@
 Booking tools for the Booking Agent.
 Handles meeting room booking, tracking, updating, and cancellation.
 """
+from typing import Annotated
 from langchain_core.tools import tool
+from langgraph.prebuilt import InjectedState
 from sqlalchemy import select
 
 from app.core.database import async_session_maker
@@ -23,7 +25,7 @@ async def book_room(
     customer_phone: str = None,
     note: str = None,
     email: str = None,
-    user_id: int = None,
+    user_id: Annotated[int, InjectedState("user_id")] = None,
 ) -> str:
     """
     Book a meeting room.
@@ -36,15 +38,17 @@ async def book_room(
         customer_phone: Phone number (optional)
         note: Additional notes (optional)
         email: Contact email (optional)
-        user_id: User ID from context (injected automatically)
     """
+    if not user_id:
+        return "❌ Lỗi: Không thể xác định người dùng. Vui lòng đăng nhập lại."
+
     parsed_time = parse_datetime(time)
     if not parsed_time:
         return f"❌ Invalid time format: '{time}'. Please use YYYY-MM-DD HH:MM format."
 
     async with async_session_maker() as session:
         booking = Booking(
-            user_id=user_id or 0,
+            user_id=user_id,
             room_name=room_name,
             customer_name=customer_name,
             customer_phone=customer_phone,
@@ -73,7 +77,7 @@ async def book_room(
 @tool
 async def track_booking(
     booking_id: int = None,
-    user_id: int = None,
+    user_id: Annotated[int, InjectedState("user_id")] = None,
 ) -> str:
     """
     Track booking status. Provide booking_id for specific booking,
@@ -81,7 +85,6 @@ async def track_booking(
 
     Args:
         booking_id: Specific booking ID to track (optional)
-        user_id: User ID from context (injected automatically)
     """
     async with async_session_maker() as session:
         if booking_id:
@@ -93,9 +96,11 @@ async def track_booking(
                 return f"❌ Booking #{booking_id} not found."
             return _format_booking(booking)
         else:
+            if not user_id:
+                return "❌ Lỗi: Không thể xác định người dùng. Vui lòng đăng nhập lại."
             result = await session.execute(
                 select(Booking)
-                .where(Booking.user_id == (user_id or 0))
+                .where(Booking.user_id == user_id)
                 .order_by(Booking.time.desc())
                 .limit(10)
             )

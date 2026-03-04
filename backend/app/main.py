@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.database import init_db
-from app.agents.graph import create_graph
+from app.agents.shared.graph import create_graph
 from app.api.api_v1.api import api_router
 
 
@@ -26,12 +26,26 @@ async def lifespan(app: FastAPI):
     await init_db()
     print("✅ Database initialized")
 
-    # Build and compile the multi-agent graph
-    graph = create_graph()
-    app.state.graph = graph
-    print(f"✅ LangGraph compiled (HITL: {'enabled' if settings.ENABLE_HITL else 'disabled'})")
+    # Build and compile the multi-agent graph with persistent PostgreSQL checkpointer
+    from psycopg_pool import AsyncConnectionPool
+    from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
-    yield
+    # Connect to PostgreSQL pool for checkpointing
+    async with AsyncConnectionPool(
+        conninfo=settings.CHECKPOINT_POSTGRES_URL,
+        max_size=10,
+        kwargs={"autocommit": True, "prepare_threshold": 0},
+    ) as pool:
+        checkpointer = AsyncPostgresSaver(pool)
+        
+        # Initialize checkpointer tables (run once)
+        await checkpointer.setup()
+        
+        graph = create_graph(checkpointer=checkpointer)
+        app.state.graph = graph
+        print(f"✅ LangGraph compiled with persistent PostgreSQL checkpointer (HITL: {'enabled' if settings.ENABLE_HITL else 'disabled'})")
+        
+        yield
 
     # Shutdown
     print("👋 Shutting down...")

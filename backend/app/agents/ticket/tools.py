@@ -2,7 +2,9 @@
 Ticket tools for the Ticket Agent.
 Handles support ticket creation, tracking, and updating.
 """
+from typing import Annotated
 from langchain_core.tools import tool
+from langgraph.prebuilt import InjectedState
 from sqlalchemy import select
 
 from app.core.database import async_session_maker
@@ -20,7 +22,7 @@ async def create_ticket(
     customer_name: str = None,
     customer_phone: str = None,
     email: str = None,
-    user_id: int = None,
+    user_id: Annotated[int, InjectedState("user_id")] = None,
 ) -> str:
     """
     Create a new support ticket.
@@ -31,11 +33,13 @@ async def create_ticket(
         customer_name: Customer's name (optional)
         customer_phone: Customer's phone number (optional)
         email: Customer's email (optional)
-        user_id: User ID from context (injected automatically)
     """
+    if not user_id:
+        return "❌ Lỗi: Không thể xác định người dùng. Vui lòng đăng nhập lại."
+
     async with async_session_maker() as session:
         ticket = Ticket(
-            user_id=user_id or 0,
+            user_id=user_id,
             content=content,
             description=description,
             customer_name=customer_name,
@@ -61,7 +65,7 @@ async def create_ticket(
 @tool
 async def track_ticket(
     ticket_id: int = None,
-    user_id: int = None,
+    user_id: Annotated[int, InjectedState("user_id")] = None,
 ) -> str:
     """
     Track ticket status. Provide ticket_id for a specific ticket,
@@ -69,7 +73,6 @@ async def track_ticket(
 
     Args:
         ticket_id: Specific ticket ID to track (optional)
-        user_id: User ID from context (injected automatically)
     """
     async with async_session_maker() as session:
         if ticket_id:
@@ -81,9 +84,11 @@ async def track_ticket(
                 return f"❌ Ticket #{ticket_id} not found."
             return _format_ticket(ticket)
         else:
+            if not user_id:
+                return "❌ Lỗi: Không thể xác định người dùng. Vui lòng đăng nhập lại."
             result = await session.execute(
                 select(Ticket)
-                .where(Ticket.user_id == (user_id or 0))
+                .where(Ticket.user_id == user_id)
                 .order_by(Ticket.time.desc())
                 .limit(10)
             )
