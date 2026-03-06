@@ -5,11 +5,9 @@ Handles meeting room booking, tracking, updating, and cancellation.
 from typing import Annotated
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
-from sqlalchemy import select
 
-from app.core.database import async_session_maker
-from app.models.booking import Booking, BookingStatus
-from app.utils.helpers import parse_datetime
+from app.models.booking import Booking
+from app.services.booking_service import BookingService
 from app.utils.hitl import hitl_protected
 
 
@@ -42,36 +40,31 @@ async def book_room(
     if not user_id:
         return "❌ Lỗi: Không thể xác định người dùng. Vui lòng đăng nhập lại."
 
-    parsed_time = parse_datetime(time)
-    if not parsed_time:
-        return f"❌ Invalid time format: '{time}'. Please use YYYY-MM-DD HH:MM format."
-
-    async with async_session_maker() as session:
-        booking = Booking(
+    try:
+        booking = await BookingService.create_booking(
             user_id=user_id,
             room_name=room_name,
+            reason=reason,
+            time_str=time,
             customer_name=customer_name,
             customer_phone=customer_phone,
             email=email,
-            reason=reason,
-            time=parsed_time,
             note=note,
-            status=BookingStatus.SCHEDULED.value,
         )
-        session.add(booking)
-        await session.commit()
-        await session.refresh(booking)
-
         return (
             f"✅ Room booked successfully!\n"
             f"📋 Booking ID: {booking.booking_id}\n"
             f"🏢 Room: {room_name or 'N/A'}\n"
             f"📝 Reason: {reason}\n"
-            f"📅 Time: {parsed_time.strftime('%Y-%m-%d %H:%M')}\n"
+            f"📅 Time: {booking.time.strftime('%Y-%m-%d %H:%M')}\n"
             f"👤 Name: {customer_name or 'N/A'}\n"
             f"📧 Email: {email or 'N/A'}\n"
             f"📌 Status: {booking.status}"
         )
+    except ValueError as e:
+        return f"❌ {str(e)}"
+    except Exception as e:
+        return f"❌ Error: {str(e)}"
 
 
 @tool
@@ -86,28 +79,18 @@ async def track_booking(
     Args:
         booking_id: Specific booking ID to track (optional)
     """
-    async with async_session_maker() as session:
-        if booking_id:
-            result = await session.execute(
-                select(Booking).where(Booking.booking_id == booking_id)
-            )
-            booking = result.scalar_one_or_none()
-            if not booking:
-                return f"❌ Booking #{booking_id} not found."
-            return _format_booking(booking)
-        else:
-            if not user_id:
-                return "❌ Lỗi: Không thể xác định người dùng. Vui lòng đăng nhập lại."
-            result = await session.execute(
-                select(Booking)
-                .where(Booking.user_id == user_id)
-                .order_by(Booking.time.desc())
-                .limit(10)
-            )
-            bookings = result.scalars().all()
-            if not bookings:
-                return "📋 No bookings found."
-            return "\n\n---\n\n".join(_format_booking(b) for b in bookings)
+    if booking_id:
+        booking = await BookingService.get_booking_by_id(booking_id)
+        if not booking:
+            return f"❌ Booking #{booking_id} not found."
+        return _format_booking(booking)
+    else:
+        if not user_id:
+            return "❌ Lỗi: Không thể xác định người dùng. Vui lòng đăng nhập lại."
+        bookings = await BookingService.get_recent_bookings_by_user(user_id)
+        if not bookings:
+            return "📋 No bookings found."
+        return "\n\n---\n\n".join(_format_booking(b) for b in bookings)
 
 
 @tool
@@ -135,49 +118,21 @@ async def update_booking(
         note: Updated note (optional)
         email: Updated email (optional)
     """
-    async with async_session_maker() as session:
-        result = await session.execute(
-            select(Booking).where(Booking.booking_id == booking_id)
-        )
-        booking = result.scalar_one_or_none()
-
-        if not booking:
-            return f"❌ Booking #{booking_id} not found."
-
-        if booking.status in [BookingStatus.FINISHED.value, BookingStatus.CANCELED.value]:
-            return f"❌ Cannot update booking #{booking_id}: status is '{booking.status}'."
-
-        updates = []
-        if room_name:
-            booking.room_name = room_name
-            updates.append(f"Room → {room_name}")
-        if reason:
-            booking.reason = reason
-            updates.append(f"Reason → {reason}")
-        if time:
-            parsed_time = parse_datetime(time)
-            if not parsed_time:
-                return f"❌ Invalid time format: '{time}'."
-            booking.time = parsed_time
-            updates.append(f"Time → {parsed_time.strftime('%Y-%m-%d %H:%M')}")
-        if customer_name:
-            booking.customer_name = customer_name
-            updates.append(f"Name → {customer_name}")
-        if customer_phone:
-            booking.customer_phone = customer_phone
-            updates.append(f"Phone → {customer_phone}")
-        if note:
-            booking.note = note
-            updates.append(f"Note → {note}")
-        if email:
-            booking.email = email
-            updates.append(f"Email → {email}")
-
-        if not updates:
-            return "⚠️ No fields to update."
-
-        await session.commit()
-        return f"✅ Booking #{booking_id} updated:\n" + "\n".join(f"  • {u}" for u in updates)
+    success, message, updates = await BookingService.update_booking(
+        booking_id=booking_id,
+        room_name=room_name,
+        reason=reason,
+        time_str=time,
+        customer_name=customer_name,
+        customer_phone=customer_phone,
+        note=note,
+        email=email,
+    )
+    
+    if not success:
+        return message
+        
+    return f"{message}\n" + "\n".join(f"  • {u}" for u in updates)
 
 
 @tool
@@ -189,24 +144,8 @@ async def cancel_booking(booking_id: int) -> str:
     Args:
         booking_id: ID of the booking to cancel
     """
-    async with async_session_maker() as session:
-        result = await session.execute(
-            select(Booking).where(Booking.booking_id == booking_id)
-        )
-        booking = result.scalar_one_or_none()
-
-        if not booking:
-            return f"❌ Booking #{booking_id} not found."
-
-        if booking.status == BookingStatus.FINISHED.value:
-            return f"❌ Cannot cancel booking #{booking_id}: already Finished."
-
-        if booking.status == BookingStatus.CANCELED.value:
-            return f"⚠️ Booking #{booking_id} is already Canceled."
-
-        booking.status = BookingStatus.CANCELED.value
-        await session.commit()
-        return f"✅ Booking #{booking_id} has been canceled."
+    success, message = await BookingService.cancel_booking(booking_id)
+    return message
 
 
 def _format_booking(booking: Booking) -> str:

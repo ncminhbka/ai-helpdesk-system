@@ -46,11 +46,12 @@ def get_vectorstore() -> PGVector:
 def search_fpt_policies(query: str) -> str:
     """
     Search FPT corporate policies and documents.
-    Use this tool to answer questions about:
-    - FPT Code of Business Conduct
-    - Human Rights Policy
-    - Personal Data Protection Regulation
-    - Any other FPT corporate policies
+    Use this tool to answer any questions about:
+    - FPT corporate policies and regulations
+    - HR policies, salaries, and benefits
+    - Code of Business Conduct and Human Rights
+    - Personal Data Protection
+    - Any other company guidelines
 
     Args:
         query: The policy question to search for (in Vietnamese or English)

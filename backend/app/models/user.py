@@ -1,7 +1,7 @@
 """User model for authentication and ownership."""
 from sqlalchemy import Column, Integer, String, DateTime
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 from app.models.base import Base
 
 
@@ -12,7 +12,7 @@ class User(Base):
     email = Column(String(255), unique=True, index=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
     name = Column(String(255), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     sessions = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")

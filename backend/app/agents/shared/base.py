@@ -6,7 +6,7 @@ Contains:
 - CompleteOrEscalate: Tool for agent handoff/completion
 - Transfer schemas: ToBookingAgent, ToTicketAgent, ToFAQAgent, ToITSupportAgent
 """
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import ToolMessage, trim_messages
 from langchain_core.runnables import Runnable, RunnableConfig
 from pydantic import BaseModel, Field
 from typing import Literal, Optional
@@ -21,6 +21,7 @@ class Assistant:
     ReAct pattern agent wrapper.
     Invokes the runnable (prompt+LLM+tools) in a loop until it produces
     a valid response (not empty, not just tool calls with no content).
+    Includes history trimming to prevent context window overflow.
     """
 
     def __init__(self, runnable: Runnable):
@@ -30,8 +31,23 @@ class Assistant:
     async def __call__(self, state: AgentState, config: RunnableConfig):
         max_retries = 3
 
+        # Trim messages to keep context window manageable
+        trimmed_messages = trim_messages(
+            state["messages"],
+            max_tokens=4000,
+            strategy="last",
+            token_counter="approximate",
+            include_system=True,
+            start_on="human",
+            allow_partial=False,
+        )
+        
+        # Create a temporary state for the invocation with trimmed messages
+        invoke_state = {**state, "messages": trimmed_messages}
+
         for attempt in range(max_retries):
-            result = await self.runnable.ainvoke(state, config)
+            # Invoke with the trimmed state, but original config
+            result = await self.runnable.ainvoke(invoke_state, config)
 
             # If no tool calls and no content, retry with nudge
             if not result.tool_calls and (

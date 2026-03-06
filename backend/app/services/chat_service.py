@@ -3,17 +3,14 @@ Chat service - Orchestrates LangGraph invocation and message persistence.
 Handles session management, HITL resume via Command(resume=...), and message saving.
 """
 import json
-import uuid
-from datetime import datetime
-from typing import Optional, Any
+from typing import Optional, Any, List
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+from langchain_core.messages import HumanMessage, AIMessage
 from langgraph.types import Command
 
-from app.models.chat import ChatSession, Message
-from app.utils.helpers import truncate_text, safe_json_dumps
+from app.models.chat import ChatSession
+from app.repositories.chat_repository import ChatRepository
 
 
 class ChatService:
@@ -23,28 +20,21 @@ class ChatService:
         db: AsyncSession, user_id: int, title: str = "New Chat"
     ) -> ChatSession:
         """Create a new chat session."""
-        session = ChatSession(
-            session_id=str(uuid.uuid4()),
-            user_id=user_id,
-            title=title,
-        )
-        db.add(session)
-        await db.commit()
-        await db.refresh(session)
-        return session
+        return await ChatRepository.create_session(db, user_id, title)
 
     @staticmethod
     async def get_session(
         db: AsyncSession, session_id: str, user_id: int
     ) -> Optional[ChatSession]:
         """Get a session owned by the specified user."""
-        result = await db.execute(
-            select(ChatSession).where(
-                ChatSession.session_id == session_id,
-                ChatSession.user_id == user_id,
-            )
-        )
-        return result.scalar_one_or_none()
+        return await ChatRepository.get_session(db, session_id, user_id)
+
+    @staticmethod
+    async def list_session_by_user_id(
+        db: AsyncSession, user_id: int
+    ) -> List[ChatSession]:
+        """List all sessions for a specific user."""
+        return await ChatRepository.list_session_by_user_id(db, user_id)
 
     @staticmethod
     async def save_message(
@@ -56,29 +46,30 @@ class ChatService:
         metadata: dict = None,
     ):
         """Persist a message to the database."""
-        msg = Message(
-            session_id=session_id,
-            role=role,
-            content=content,
-            message_type=message_type,
-            metadata_json=safe_json_dumps(metadata) if metadata else None,
+        await ChatRepository.save_message(
+            db, session_id, role, content, message_type, metadata
         )
-        db.add(msg)
-        await db.commit()
 
     @staticmethod
     async def update_session_title(
         db: AsyncSession, session_id: str, title: str
     ):
         """Update session title (e.g., from first message)."""
-        result = await db.execute(
-            select(ChatSession).where(ChatSession.session_id == session_id)
-        )
-        session = result.scalar_one_or_none()
-        if session:
-            session.title = truncate_text(title, 50)
-            session.updated_at = datetime.utcnow()
-            await db.commit()
+        await ChatRepository.update_session_title(db, session_id, title)
+
+    @staticmethod
+    async def get_messages(
+        db: AsyncSession, session_id: str
+    ) -> List[Any]:
+        """Fetch all messages in a session."""
+        return await ChatRepository.get_messages(db, session_id)
+
+    @staticmethod
+    async def delete_session(
+        db: AsyncSession, session: ChatSession
+    ):
+        """Delete a chat session."""
+        await ChatRepository.delete_session(db, session)
 
     @staticmethod
     async def process_message(
@@ -91,13 +82,6 @@ class ChatService:
     ) -> dict:
         """
         Process a user message through the LangGraph.
-
-        Flow:
-        1. Save user message to DB
-        2. Check if graph is paused (HITL interrupt) and handle resume
-        3. Otherwise, invoke graph with new message
-        4. After invoke, check for __interrupt__ in result
-        5. Return confirm-type response if interrupted, else message-type
         """
         # Save user message
         await ChatService.save_message(db, session_id, "user", message)
@@ -110,13 +94,11 @@ class ChatService:
             current_state = await graph.aget_state(config)
             is_interrupted = bool(current_state.next)
 
-            if is_interrupted: # (confirmation form already shown, waiting for user response)
-                # HITL flow: user is responding to confirmation
+            if is_interrupted: 
                 result = await ChatService._handle_hitl_resume(
                     graph, config, message
                 )
             else:
-                # Normal flow: invoke graph with new message
                 result = await ChatService._invoke_graph(
                     graph, config, message, user_id, user_email, session_id
                 )
@@ -202,31 +184,24 @@ class ChatService:
     async def _handle_hitl_resume(graph, config, message) -> dict:
         """
         Handle HITL confirmation resume using Command(resume=...).
-        The frontend sends a JSON payload: {"action":"approve|reject", "edits":{...}}
         """
-        # Try to parse structured JSON from frontend
         try:
             resume_payload = json.loads(message)
         except (json.JSONDecodeError, TypeError):
-            # Fallback: treat plain text as simple approve/reject
             text = message.strip().lower()
             if text in ["y", "yes", "có", "ok", "confirm", "đồng ý"]:
                 resume_payload = {"action": "approve"}
             else:
                 resume_payload = {"action": "reject"}
 
-        # Resume the graph with the structured payload
         result = await graph.ainvoke(Command(resume=resume_payload), config)
         return result
 
     @staticmethod
     async def _maybe_update_title(db: AsyncSession, session_id: str, message: str):
         """Update session title from first message if needed."""
-        count_result = await db.execute(
-            select(Message).where(Message.session_id == session_id)
-        )
-        msg_count = len(count_result.scalars().all())
-        if msg_count <= 1: # only update title if there is only one message
+        msg_count = await ChatRepository.get_message_count(db, session_id)
+        if msg_count <= 1: 
             await ChatService.update_session_title(db, session_id, message)
 
     @staticmethod
@@ -234,12 +209,10 @@ class ChatService:
         """Extract the final assistant response text from graph result."""
         messages = result.get("messages", [])
 
-        # Walk backwards to find the last AI message with content
         for msg in reversed(messages):
             if isinstance(msg, AIMessage) and msg.content:
                 content = msg.content
                 if isinstance(content, list):
-                    # Multi-part content
                     text_parts = [
                         p.get("text", "") for p in content
                         if isinstance(p, dict) and p.get("text")

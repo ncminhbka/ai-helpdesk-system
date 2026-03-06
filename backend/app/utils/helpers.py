@@ -1,7 +1,7 @@
 """
 Utility functions and helpers.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 import json
 
@@ -19,7 +19,9 @@ def parse_datetime(dt_string: str) -> Optional[datetime]:
 
     for fmt in formats:
         try:
-            return datetime.strptime(dt_string, fmt)
+            # Parse as naive datetime then assume UTC timezone
+            naive_dt = datetime.strptime(dt_string, fmt)
+            return naive_dt.replace(tzinfo=timezone.utc)
         except ValueError:
             continue
 
