@@ -1,7 +1,7 @@
 """Chat session and message models for conversation persistence."""
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 from app.models.base import Base
 
 
@@ -11,8 +11,8 @@ class ChatSession(Base):
     session_id = Column(String(36), primary_key=True)  # UUID
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     title = Column(String(255), default="New Chat")
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships
     user = relationship("User", back_populates="sessions")
@@ -28,7 +28,7 @@ class Message(Base):
     content = Column(Text, nullable=False)
     message_type = Column(String(20), default="message")  # 'message', 'confirm', 'error'
     metadata_json = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     session = relationship("ChatSession", back_populates="messages")

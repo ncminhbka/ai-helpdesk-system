@@ -66,7 +66,7 @@ app.add_middleware(
 )
 
 # API routes
-app.include_router(api_router, prefix=settings.API_V1_STR)
+app.include_router(api_router, prefix=settings.API_V1_STR) # include_router là gắn 1 nhóm router vào app
 
 
 @app.get("/health")

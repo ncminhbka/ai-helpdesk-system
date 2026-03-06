@@ -19,7 +19,7 @@ router = APIRouter()
 @router.post("/login", response_model=Token)
 async def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db), # đây chính là chỗ gọi get_db() để lấy session
 ) -> Any:
     """OAuth2 compatible login endpoint."""
     user = await AuthService.authenticate(

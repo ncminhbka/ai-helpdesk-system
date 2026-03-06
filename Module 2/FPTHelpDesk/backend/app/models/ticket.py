@@ -1,7 +1,7 @@
 """Support ticket model with status management."""
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 import enum
 from app.models.base import Base
 
@@ -23,7 +23,7 @@ class Ticket(Base):
     customer_name = Column(String(255), nullable=True)
     customer_phone = Column(String(20), nullable=True)
     email = Column(String(255), nullable=True)
-    time = Column(DateTime, default=datetime.utcnow)
+    time = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     status = Column(String(20), default=TicketStatus.PENDING.value)
 
     # Relationships

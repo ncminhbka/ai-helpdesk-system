@@ -1,12 +1,11 @@
 """Chat and session management endpoints."""
 from typing import Any, List
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.models.user import User
-from app.models.chat import ChatSession, Message
+from app.models.chat import ChatSession
 from app.services.chat_service import ChatService
 from app.schemas.chat import (
     ChatRequest, ChatResponse, SessionCreate,
@@ -61,12 +60,8 @@ async def list_sessions(
     db: AsyncSession = Depends(get_db),
 ) -> Any:
     """List all sessions for current user."""
-    result = await db.execute(
-        select(ChatSession)
-        .where(ChatSession.user_id == current_user.id)
-        .order_by(ChatSession.updated_at.desc())
-    )
-    return result.scalars().all()
+    result = await ChatService.list_session_by_user_id(db, current_user.id)
+    return result
 
 
 @router.get("/sessions/{session_id}")
@@ -80,12 +75,7 @@ async def get_session(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    messages_result = await db.execute(
-        select(Message)
-        .where(Message.session_id == session_id)
-        .order_by(Message.created_at)
-    )
-    messages = messages_result.scalars().all()
+    messages = await ChatService.get_messages(db, session_id)
 
     return {
         "session_id": session.session_id,
@@ -116,6 +106,5 @@ async def delete_session(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    await db.delete(session)
-    await db.commit()
+    await ChatService.delete_session(db, session)
     return {"detail": "Session deleted"}
