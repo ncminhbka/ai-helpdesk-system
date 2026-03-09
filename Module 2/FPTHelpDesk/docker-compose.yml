@@ -4,8 +4,9 @@ services:
     image: pgvector/pgvector:pg17
     container_name: fpt_helpdesk_db
     restart: unless-stopped
+    # Use the root .env for interpolation and container env
     env_file:
-      - ./backend/.env
+      - .env
     environment:
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
@@ -29,10 +30,13 @@ services:
     container_name: fpt_helpdesk_backend
     restart: unless-stopped
     env_file:
-      - ./backend/.env
+      - .env
     environment:
       # Override DB_HOST to point to the db service (not localhost)
       DB_HOST: db
+      # Use internal service name for database URLs
+      DATABASE_URL: postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
+      CHECKPOINT_POSTGRES_URL: postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
     ports:
       - "8000:8000"
     volumes:
