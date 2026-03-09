@@ -7,10 +7,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.core.config import settings
-from app.core.database import init_db
-from app.agents.shared.graph import create_graph
-from app.api.api_v1.api import api_router
+from app.infrastructure.config.settings import settings
+from app.infrastructure.database.engine import init_db
+from app.infrastructure.ai.shared.graph import create_graph
+from app.presentation.api_v1.router import api_router
 
 
 @asynccontextmanager
