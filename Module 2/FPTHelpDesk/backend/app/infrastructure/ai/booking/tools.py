@@ -12,7 +12,7 @@ from app.application.use_cases.booking_use_case import BookingUseCase
 from app.application.utils.helpers import parse_datetime
 from app.domain.exceptions import BookingNotFoundError, InvalidBookingStatusError
 from app.infrastructure.database.engine import async_session_maker
-from app.infrastructure.hitl.decorator import hitl_protected
+from app.infrastructure.ai.hitl.decorator import hitl_protected
 from app.infrastructure.repositories.booking_repository import BookingRepository
 
 

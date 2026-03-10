@@ -1,6 +1,6 @@
 # 🏢 FPT HelpDesk — Multi-Agent AI Assistant
 
-Hệ thống chatbot hỗ trợ nội bộ FPT sử dụng **LangGraph** multi-agent architecture + **FastAPI** + **React (Vite)** + **PostgreSQL + pgvector**.
+Hệ thống chatbot hỗ trợ nội bộ FPT sử dụng **LangGraph** multi-agent architecture + **FastAPI** + **React (Vite)** + **PostgreSQL + pgvector**, được thiết kế theo chuẩn **Clean Architecture**.
 
 ## ✨ Tính năng
 
@@ -10,53 +10,136 @@ Hệ thống chatbot hỗ trợ nội bộ FPT sử dụng **LangGraph** multi-a
 - 🔧 **IT Support** — Hỗ trợ kỹ thuật (web search)
 - ⚠️ **HITL Confirmation** — Xác nhận / sửa / hủy trước khi thực hiện thao tác nhạy cảm
 
+---
+
+## 🏛️ Kiến trúc
+
+Dự án tuân theo **Clean Architecture** với 4 tầng độc lập, phụ thuộc một chiều từ ngoài vào trong:
+
+```
+┌─────────────────────────────────────────────┐
+│  Presentation Layer  (FastAPI)              │  HTTP endpoints, DI wiring
+├─────────────────────────────────────────────┤
+│  Application Layer   (Use Cases + DTOs)     │  Business workflows, validation
+├─────────────────────────────────────────────┤
+│  Infrastructure Layer (Repositories, AI)    │  DB, Security, LangGraph agents
+├─────────────────────────────────────────────┤
+│  Domain Layer        (Entities, Interfaces) │  Pure Python, zero dependencies
+└─────────────────────────────────────────────┘
+```
+
+**Nguyên tắc phụ thuộc:**
+- `Domain` — không import từ bất kỳ tầng nào
+- `Application` — chỉ import từ `Domain`
+- `Infrastructure` — import từ `Domain` + `Application`
+- `Presentation` — import từ tất cả, nhưng chỉ gọi qua `Application`
+
+---
+
 ## 📁 Cấu trúc dự án
 
 ```
 FPTHelpDesk/
-├── docker-compose.yml        ← Chạy toàn bộ stack bằng 1 lệnh
+├── docker-compose.yml
 ├── docker/
-│   └── init.sql              ← Tự động bật pgvector extension
-├── docs/                     ← Tài liệu chính sách PDF (cho RAG)
+│   └── init.sql                         ← Bật pgvector extension
+├── docs/                                ← Tài liệu chính sách PDF (RAG)
 ├── backend/
-│   ├── app/
-│   │   ├── agents/           ← LangGraph agents (domain-driven)
-│   │   │   ├── shared/       ← base.py, graph.py
-│   │   │   ├── primary/      ← Primary assistant
-│   │   │   ├── booking/      ← Booking agent + tools + prompt
-│   │   │   ├── ticket/       ← Ticket agent + tools + prompt
-│   │   │   ├── faq/          ← FAQ agent + RAG tools + prompt
-│   │   │   └── it_support/   ← IT Support agent + search tools
-│   │   ├── api/              ← FastAPI endpoints
-│   │   ├── core/             ← Config, database
-│   │   ├── models/           ← SQLAlchemy models
-│   │   ├── services/         ← Business logic
-│   │   └── main.py
-│   ├── ingest.py             ← Script nhập tài liệu vào pgvector
+│   ├── ingest.py                        ← Nhập tài liệu vào pgvector
 │   ├── Dockerfile
 │   ├── requirements.txt
-│   └── .env                  ← Cấu hình (KHÔNG commit lên git)
+│   ├── .env                             ← Cấu hình (KHÔNG commit)
+│   └── app/
+│       ├── main.py                      ← FastAPI entry point + lifespan
+│       ├── domain/                      ← Tầng 1: Pure business logic
+│       │   ├── entities/                ← Python dataclasses (User, Ticket, Booking, Chat)
+│       │   ├── interfaces/              ← ABC interfaces (IUserRepository, IPasswordHasher, ...)
+│       │   └── exceptions.py            ← Domain exceptions (TicketNotFoundError, ...)
+│       ├── application/                 ← Tầng 2: Use cases & DTOs
+│       │   ├── dtos/                    ← Pydantic DTOs (input/output)
+│       │   ├── use_cases/               ← Business logic (AuthUseCase, ChatUseCase, ...)
+│       │   └── utils/
+│       │       └── helpers.py           ← Utility functions (parse_datetime, ...)
+│       ├── infrastructure/              ← Tầng 3: Concrete implementations
+│       │   ├── config/settings.py       ← Pydantic Settings
+│       │   ├── database/                ← SQLAlchemy engine + models
+│       │   ├── repositories/            ← Concrete repos (UserRepository, ...)
+│       │   ├── security/
+│       │   │   ├── jwt_bcrypt.py        ← JWT + bcrypt functions
+│       │   │   └── password_hasher.py   ← BcryptPasswordHasher (implements IPasswordHasher)
+│       │   └── ai/                      ← LangGraph multi-agent system
+│       │       ├── shared/
+│       │       │   ├── state.py         ← AgentState (LangGraph TypedDict)
+│       │       │   ├── base.py          ← Assistant class + transfer schemas
+│       │       │   └── graph.py         ← StateGraph orchestration
+│       │       ├── hitl/
+│       │       │   └── decorator.py     ← @hitl_protected decorator
+│       │       ├── primary/             ← Primary routing agent
+│       │       ├── booking/             ← Booking agent + tools
+│       │       ├── ticket/              ← Ticket agent + tools
+│       │       ├── faq/                 ← FAQ agent + RAG tools
+│       │       ├── it_support/          ← IT Support agent + search tools
+│       │       └── graph_runner.py      ← LangGraphRunner (implements IGraphRunner)
+│       └── presentation/               ← Tầng 4: HTTP interface
+│           ├── dependencies.py          ← FastAPI DI chain (DB → Repo → UseCase)
+│           └── api_v1/
+│               ├── router.py
+│               └── endpoints/           ← auth.py, chat.py, users.py
 └── frontend/
     ├── src/
-    ├── nginx.conf            ← Proxy /api/ → backend
+    ├── nginx.conf                       ← Proxy /api/ → backend
     ├── Dockerfile
     └── package.json
 ```
 
 ---
 
-## 🚀 Hướng dẫn chạy dự án
+## 🔗 Dependency Injection Chain
 
-### Yêu cầu
+```
+get_db()
+  └─→ get_user_repository()    → IUserRepository
+  └─→ get_ticket_repository()  → ITicketRepository
+  └─→ get_booking_repository() → IBookingRepository
+  └─→ get_chat_repository()    → IChatRepository
 
-- **Docker Desktop** (đã cài và đang chạy)
-- **Python 3.11+** + **Conda** (chỉ cần để chạy `ingest.py` lần đầu)
+get_password_hasher()          → IPasswordHasher
+
+get_auth_use_case(repo, hasher)    → AuthUseCase
+get_user_use_case(repo, hasher)    → UserUseCase
+get_ticket_use_case(repo)          → TicketUseCase
+get_booking_use_case(repo)         → BookingUseCase
+get_chat_use_case(repo)            → ChatUseCase
+```
 
 ---
 
-### Bước 1: Cấu hình file `.env`
+## 🤖 Multi-Agent Architecture
 
-Mở file `backend/.env` và điền thông tin của bạn:
+```
+START
+  └─→ fetch_user_info
+  └─→ route_to_workflow
+        ├─→ primary_assistant
+        │     ├─→ enter_booking   → booking_agent   ↔ booking_tools   → leave_skill
+        │     ├─→ enter_ticket    → ticket_agent    ↔ ticket_tools    → leave_skill
+        │     ├─→ enter_faq       → faq_agent       ↔ faq_tools       → leave_skill
+        │     └─→ enter_it_support→ it_support_agent↔ it_support_tools→ leave_skill
+        └─→ [resume từ dialog_state nếu đang interrupted]
+```
+
+**HITL Flow:** Các tool nhạy cảm dùng `@hitl_protected` → gọi `interrupt()` → graph tạm dừng → frontend hiện card xác nhận → user approve/reject/edit → graph resume.
+
+---
+
+## 🚀 Hướng dẫn chạy
+
+### Yêu cầu
+
+- **Docker Desktop** (đang chạy)
+- **Python 3.11+** (chỉ để chạy `ingest.py`)
+
+### Bước 1: Cấu hình `.env`
 
 ```env
 # OpenAI (bắt buộc)
@@ -65,7 +148,7 @@ OPENAI_API_KEY=sk-proj-...
 # Tavily - IT Support search (bắt buộc)
 TAVILY_API_KEY=tvly-...
 
-# Database PostgreSQL
+# Database
 DB_USER=postgres
 DB_PASSWORD=your_password_here
 DB_HOST=localhost
@@ -73,53 +156,38 @@ DB_PORT=5432
 DB_NAME=fpt_helpdesk
 
 # Security
-SECRET_KEY=your-super-secret-key-change-in-production
+SECRET_KEY=your-super-secret-key
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=1440
 
 # RAG
 DOCS_DIR=../docs
 
-# HITL - xác nhận trước thao tác nhạy cảm (true/false)
+# HITL (true/false)
 ENABLE_HITL=true
 
-# LangSmith (tùy chọn - monitoring)
+# LangSmith (tùy chọn)
 # LANGCHAIN_TRACING_V2=true
 # LANGCHAIN_API_KEY=lsv2_pt_...
 # LANGCHAIN_PROJECT=FPTHelpDesk
 ```
 
----
-
-### Bước 2: Khởi động toàn bộ stack
+### Bước 2: Khởi động stack
 
 ```bash
-# Chạy tại thư mục gốc FPTHelpDesk/
 docker compose up -d --build
 ```
 
-Lệnh này sẽ tự động:
-1. 🐘 Khởi động **PostgreSQL + pgvector** (port 5432)
-2. ⚙️ Build và khởi động **FastAPI backend** (port 8000)
-3. 🌐 Build và khởi động **React frontend qua nginx** (port 80)
+Tự động khởi động: PostgreSQL + pgvector (5432) → FastAPI backend (8000) → React frontend via nginx (80)
 
----
-
-### Bước 3: Nhập tài liệu vào pgvector (chỉ cần làm 1 lần)
-
-> Đảm bảo stack đã chạy và `DB_HOST=localhost` trong `.env`
+### Bước 3: Nhập tài liệu RAG (chỉ làm 1 lần)
 
 ```bash
 cd backend
-conda activate intern_env
 python ingest.py
 ```
 
-Sau lần đầu, tài liệu được lưu trong PostgreSQL — không cần chạy lại trừ khi tài liệu thay đổi.
-
----
-
-### Bước 4: Truy cập ứng dụng
+### Bước 4: Truy cập
 
 | Service | URL |
 |---------|-----|
@@ -130,65 +198,43 @@ Sau lần đầu, tài liệu được lưu trong PostgreSQL — không cần ch
 
 ---
 
-## 🛑 Hướng dẫn tắt
+## 🛑 Tắt hệ thống
 
 ```bash
-# Tắt tất cả service (giữ nguyên data)
-docker compose down
-
-# Tắt và XÓA toàn bộ data (reset hoàn toàn)
-docker compose down -v
+docker compose down        # Tắt, giữ nguyên data
+docker compose down -v     # Tắt và xóa toàn bộ data
 ```
 
 ---
 
-## 🔧 Các lệnh thường dùng
+## 🔧 Lệnh thường dùng
 
 ```bash
-# Xem trạng thái các container
 docker compose ps
-
-# Xem log realtime
-docker compose logs -f              # Tất cả service
-docker compose logs -f backend      # Chỉ backend
-docker compose logs -f db           # Chỉ database
-
-# Restart một service
+docker compose logs -f backend
 docker compose restart backend
-
-# Vào shell PostgreSQL
 docker exec -it fpt_helpdesk_db psql -U postgres -d fpt_helpdesk
-
-# Re-ingest khi tài liệu thay đổi
-cd backend && python ingest.py --force
+cd backend && python ingest.py --force   # Re-ingest khi tài liệu thay đổi
 ```
 
 ---
 
-## 🧪 Kiểm tra nhanh
+## 🧪 Test nhanh
 
-1. Mở **http://localhost** trên trình duyệt
-2. Đăng ký tài khoản mới hoặc đăng nhập
-3. Tạo session mới → nhắn thử:
-   - `"Đặt phòng CR7 lúc 10:00 ngày mai"` → test Booking + HITL confirm
-   - `"Tra cứu booking của tôi"` → test safe tool
-   - `"Tạo ticket lỗi mạng"` → test Ticket + HITL
-   - `"Chính sách nghỉ phép"` → test FAQ / RAG
+Sau khi đăng nhập tại http://localhost, tạo session mới và thử:
+
+| Message | Agent được kích hoạt |
+|---------|----------------------|
+| `"Đặt phòng CR7 lúc 10:00 ngày mai"` | Booking + HITL confirm |
+| `"Tra cứu booking của tôi"` | Booking (safe read) |
+| `"Tạo ticket lỗi mạng"` | Ticket + HITL confirm |
+| `"Chính sách nghỉ phép"` | FAQ / RAG |
+| `"Máy tính không kết nối được wifi"` | IT Support |
 
 ---
 
 ## 📌 Ghi chú
 
-- **HITL**: Khi `ENABLE_HITL=true`, các thao tác tạo/sửa/xóa sẽ yêu cầu xác nhận. Đặt `ENABLE_HITL=false` để tắt.
-- **Agent State**: Context hội thoại được lưu trong PostgreSQL — reload trang vẫn giữ context.
-- **pgvector**: Embeddings của tài liệu chính sách được lưu trong bảng `langchain_pg_embedding`.
-
-┌─────────────────────────────────────────┐
-│   Presentation Layer (FastAPI)          │  ← HTTP/API
-├─────────────────────────────────────────┤
-│   Application Layer (Use Cases)         │  ← Business Workflows
-├─────────────────────────────────────────┤
-│   Infrastructure Layer (Implementations) │  ← Database, Security
-├─────────────────────────────────────────┤
-│   Domain Layer (Business Logic)         │  ← Entities, Interfaces
-└─────────────────────────────────────────┘
+- **HITL**: Khi `ENABLE_HITL=true`, các thao tác tạo/sửa/hủy sẽ yêu cầu xác nhận từ người dùng trước khi thực thi.
+- **Agent State**: Context hội thoại được lưu trong PostgreSQL — reload trang vẫn giữ nguyên context.
+- **pgvector**: Embeddings tài liệu chính sách lưu trong bảng `langchain_pg_embedding`.

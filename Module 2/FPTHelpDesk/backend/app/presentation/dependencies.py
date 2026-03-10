@@ -21,6 +21,8 @@ from app.infrastructure.repositories.chat_repository import ChatRepository
 from app.infrastructure.repositories.ticket_repository import TicketRepository
 from app.infrastructure.repositories.user_repository import UserRepository
 from app.infrastructure.security.jwt_bcrypt import decode_token
+from app.infrastructure.security.password_hasher import BcryptPasswordHasher
+from app.domain.interfaces.security import IPasswordHasher
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
@@ -49,16 +51,22 @@ def get_chat_repository(db: AsyncSession = Depends(get_db)) -> IChatRepository:
 # Use case factories
 # ---------------------------------------------------------------------------
 
+def get_password_hasher() -> IPasswordHasher:
+    return BcryptPasswordHasher()
+
+
 def get_auth_use_case(
     repo: IUserRepository = Depends(get_user_repository),
+    hasher: IPasswordHasher = Depends(get_password_hasher),
 ) -> AuthUseCase:
-    return AuthUseCase(repo)
+    return AuthUseCase(repo, hasher)
 
 
 def get_user_use_case(
     repo: IUserRepository = Depends(get_user_repository),
+    hasher: IPasswordHasher = Depends(get_password_hasher),
 ) -> UserUseCase:
-    return UserUseCase(repo)
+    return UserUseCase(repo, hasher)
 
 
 def get_ticket_use_case(

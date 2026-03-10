@@ -8,6 +8,7 @@ from app.application.dtos.chat_dto import (
 )
 from app.application.use_cases.chat_use_case import ChatUseCase
 from app.domain.entities.user_entity import UserEntity
+from app.infrastructure.ai.graph_runner import LangGraphRunner
 from app.presentation.dependencies import get_chat_use_case, get_current_user
 
 router = APIRouter()
@@ -30,7 +31,7 @@ async def chat(
             user_id=current_user.id,
             user_email=current_user.email,
             message=request.message,
-            graph=req.app.state.graph,
+            runner=LangGraphRunner(req.app.state.graph),
         )
     except Exception as e:
         import traceback

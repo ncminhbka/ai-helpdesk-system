@@ -1,2 +1,0 @@
-# Presentation là tầng ngoài cùng (4) của ứng dụng, nơi giao tiếp trực tiếp với người dùng.
-# nhiệm vụ duy nhất là nhận http request, chuyển thành dto, chuyển vào application service, nhận kết quả trả về từ application service, chuyển thành http response và trả về cho người dùng.

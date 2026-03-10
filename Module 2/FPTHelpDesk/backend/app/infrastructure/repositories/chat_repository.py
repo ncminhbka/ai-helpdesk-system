@@ -4,18 +4,25 @@ from datetime import datetime, timezone
 from typing import Optional, List
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession # AsyncSession là một phần của SQLAlchemy 1.4+, cho phép thực hiện các truy vấn cơ sở dữ liệu một cách bất đồng bộ, giúp cải thiện hiệu suất và khả năng mở rộng của ứng dụng khi làm việc với cơ sở dữ liệu.
 
 from app.application.utils.helpers import truncate_text, safe_json_dumps
 from app.domain.entities.chat_entity import ChatSessionEntity, MessageEntity
 from app.domain.interfaces.chat_repository import IChatRepository
-from app.infrastructure.database.models.chat_model import ChatSession, Message
+
+from app.infrastructure.database.models.chat_model import ChatSession, Message # model
 
 
 class ChatRepository(IChatRepository):
     def __init__(self, db: AsyncSession):
         self.db = db
-
+    '''
+    Phải hiểu rằng tầng infra (sqlalchemy) làm việc với models, còn tầng app làm việc với entities
+    khi chat_use_case.py trong application gọi chat_repo, nó cần trả về entity
+    khi chat_repo dùng sqlalchemy thực hiện, nó lấy model dc query từ db. cho nên phải convert
+    async def get_session(self, session_id: str, user_id: int) -> Optional[ChatSessionEntity]:
+        return await self.chat_repo.get_session(session_id, user_id)
+    '''
     def _session_to_entity(self, model: ChatSession) -> ChatSessionEntity:
         return ChatSessionEntity(
             session_id=model.session_id,
@@ -44,10 +51,10 @@ class ChatRepository(IChatRepository):
 
     async def create_session(self, user_id: int, title: str = "New Chat") -> ChatSessionEntity:
         session = ChatSession(
-            session_id=str(uuid.uuid4()),
+            session_id=str(uuid.uuid4()), 
             user_id=user_id,
             title=title,
-        )
+        ) 
         self.db.add(session)
         await self.db.commit()
         await self.db.refresh(session)
