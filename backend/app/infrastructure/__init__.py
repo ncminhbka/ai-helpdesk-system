@@ -1,0 +1,1 @@
+# Infra là tầng (3) từ trong ra, nơi giao tiếp với các hệ thống bên ngoài như cơ sở dữ liệu, API của bên thứ ba, v.v.

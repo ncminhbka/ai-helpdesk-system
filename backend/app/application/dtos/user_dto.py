@@ -16,5 +16,4 @@ class UserResponse(BaseModel):
     name: Optional[str] = None
 
     class Config:
-        # Cho phép Pydantic đọc dữ liệu trực tiếp từ các object của SQLAlchemy (ORM)
         from_attributes = True

@@ -1,0 +1,2 @@
+# interfaces là các lớp hoặc module định nghĩa các phương thức và thuộc tính mà các lớp khác phải triển khai.
+# Chúng thường được sử dụng để tạo ra một hợp đồng giữa các phần khác nhau của ứng dụng, đảm bảo rằng các phần này có thể tương tác với nhau một cách nhất quán và dễ dàng thay thế hoặc mở rộng trong tương lai.
