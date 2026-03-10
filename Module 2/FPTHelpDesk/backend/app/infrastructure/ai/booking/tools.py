@@ -3,12 +3,21 @@ Booking tools for the Booking Agent.
 Handles meeting room booking, tracking, updating, and cancellation.
 """
 from typing import Annotated
+
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
 
-from app.infrastructure.database.models.booking_model import Booking
+from app.application.dtos.booking_dto import BookingCreateDTO, BookingResponseDTO, BookingUpdateDTO
 from app.application.use_cases.booking_use_case import BookingUseCase
+from app.application.utils.helpers import parse_datetime
+from app.domain.exceptions import BookingNotFoundError, InvalidBookingStatusError
+from app.infrastructure.database.engine import async_session_maker
 from app.infrastructure.hitl.decorator import hitl_protected
+from app.infrastructure.repositories.booking_repository import BookingRepository
+
+
+def _get_use_case(db) -> BookingUseCase:
+    return BookingUseCase(BookingRepository(db))
 
 
 # ==================== TOOLS ====================
@@ -40,17 +49,25 @@ async def book_room(
     if not user_id:
         return "❌ Lỗi: Không thể xác định người dùng. Vui lòng đăng nhập lại."
 
+    parsed_time = parse_datetime(time)
+    if not parsed_time:
+        return f"❌ Invalid time format: '{time}'. Please use YYYY-MM-DD HH:MM format."
+
     try:
-        booking = await BookingUseCase.create_booking(
-            user_id=user_id,
-            room_name=room_name,
-            reason=reason,
-            time_str=time,
-            customer_name=customer_name,
-            customer_phone=customer_phone,
-            email=email,
-            note=note,
-        )
+        async with async_session_maker() as db:
+            use_case = _get_use_case(db)
+            booking = await use_case.create_booking(
+                BookingCreateDTO(
+                    user_id=user_id,
+                    room_name=room_name,
+                    reason=reason,
+                    time=parsed_time,
+                    customer_name=customer_name,
+                    customer_phone=customer_phone,
+                    note=note,
+                    email=email,
+                )
+            )
         return (
             f"✅ Room booked successfully!\n"
             f"📋 Booking ID: {booking.booking_id}\n"
@@ -59,10 +76,8 @@ async def book_room(
             f"📅 Time: {booking.time.strftime('%Y-%m-%d %H:%M')}\n"
             f"👤 Name: {customer_name or 'N/A'}\n"
             f"📧 Email: {email or 'N/A'}\n"
-            f"📌 Status: {booking.status}"
+            f"📌 Status: {booking.status.value}"
         )
-    except ValueError as e:
-        return f"❌ {str(e)}"
     except Exception as e:
         return f"❌ Error: {str(e)}"
 
@@ -79,18 +94,20 @@ async def track_booking(
     Args:
         booking_id: Specific booking ID to track (optional)
     """
-    if booking_id:
-        booking = await BookingUseCase.get_booking_by_id(booking_id)
-        if not booking:
-            return f"❌ Booking #{booking_id} not found."
-        return _format_booking(booking)
-    else:
-        if not user_id:
-            return "❌ Lỗi: Không thể xác định người dùng. Vui lòng đăng nhập lại."
-        bookings = await BookingUseCase.get_recent_bookings_by_user(user_id)
-        if not bookings:
-            return "📋 No bookings found."
-        return "\n\n---\n\n".join(_format_booking(b) for b in bookings)
+    async with async_session_maker() as db:
+        use_case = _get_use_case(db)
+        if booking_id:
+            booking = await use_case.get_booking_by_id(booking_id)
+            if not booking:
+                return f"❌ Booking #{booking_id} not found."
+            return _format_booking(booking)
+        else:
+            if not user_id:
+                return "❌ Lỗi: Không thể xác định người dùng. Vui lòng đăng nhập lại."
+            bookings = await use_case.get_recent_bookings_by_user(user_id)
+            if not bookings:
+                return "📋 No bookings found."
+            return "\n\n---\n\n".join(_format_booking(b) for b in bookings)
 
 
 @tool
@@ -118,21 +135,34 @@ async def update_booking(
         note: Updated note (optional)
         email: Updated email (optional)
     """
-    success, message, updates = await BookingUseCase.update_booking(
-        booking_id=booking_id,
-        room_name=room_name,
-        reason=reason,
-        time_str=time,
-        customer_name=customer_name,
-        customer_phone=customer_phone,
-        note=note,
-        email=email,
-    )
+    parsed_time = None
+    if time:
+        parsed_time = parse_datetime(time)
+        if not parsed_time:
+            return f"❌ Invalid time format: '{time}'. Please use YYYY-MM-DD HH:MM format."
 
-    if not success:
-        return message
-
-    return f"{message}\n" + "\n".join(f"  • {u}" for u in updates)
+    try:
+        async with async_session_maker() as db:
+            use_case = _get_use_case(db)
+            booking = await use_case.update_booking(
+                booking_id=booking_id,
+                data=BookingUpdateDTO(
+                    room_name=room_name,
+                    reason=reason,
+                    time=parsed_time,
+                    customer_name=customer_name,
+                    customer_phone=customer_phone,
+                    note=note,
+                    email=email,
+                ),
+            )
+        return f"✅ Booking #{booking.booking_id} updated.\n{_format_booking(booking)}"
+    except BookingNotFoundError as e:
+        return f"❌ {str(e)}"
+    except InvalidBookingStatusError as e:
+        return f"❌ {str(e)}"
+    except Exception as e:
+        return f"❌ Error: {str(e)}"
 
 
 @tool
@@ -144,12 +174,21 @@ async def cancel_booking(booking_id: int) -> str:
     Args:
         booking_id: ID of the booking to cancel
     """
-    success, message = await BookingUseCase.cancel_booking(booking_id)
-    return message
+    try:
+        async with async_session_maker() as db:
+            use_case = _get_use_case(db)
+            booking = await use_case.cancel_booking(booking_id)
+        return f"✅ Booking #{booking.booking_id} has been canceled."
+    except BookingNotFoundError as e:
+        return f"❌ {str(e)}"
+    except InvalidBookingStatusError as e:
+        return f"❌ {str(e)}"
+    except Exception as e:
+        return f"❌ Error: {str(e)}"
 
 
-def _format_booking(booking: Booking) -> str:
-    """Format a booking for display."""
+def _format_booking(booking: BookingResponseDTO) -> str:
+    """Format a booking DTO for display."""
     time_str = booking.time.strftime("%Y-%m-%d %H:%M") if booking.time else "N/A"
     return (
         f"📅 Booking #{booking.booking_id}\n"
@@ -159,5 +198,5 @@ def _format_booking(booking: Booking) -> str:
         f"  👤 Name: {booking.customer_name or 'N/A'}\n"
         f"  📞 Phone: {booking.customer_phone or 'N/A'}\n"
         f"  📧 Email: {booking.email or 'N/A'}\n"
-        f"  📌 Status: {booking.status}"
+        f"  📌 Status: {booking.status.value}"
     )

@@ -1,15 +1,17 @@
 """Authentication use case."""
 from typing import Optional
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.infrastructure.database.models.user_model import User
-from app.application.use_cases.user_use_case import UserUseCase
+
+from app.domain.entities.user_entity import UserEntity
+from app.domain.interfaces.user_repository import IUserRepository
 from app.infrastructure.security.jwt_bcrypt import verify_password
 
 
 class AuthUseCase:
-    @staticmethod
-    async def authenticate(db: AsyncSession, email: str, password: str) -> Optional[User]:
-        user = await UserUseCase.get_by_email(db, email)
+    def __init__(self, user_repo: IUserRepository):
+        self.user_repo = user_repo
+
+    async def authenticate(self, email: str, password: str) -> Optional[UserEntity]:
+        user = await self.user_repo.get_by_email(email)
         if not user:
             return None
         if not verify_password(password, user.password_hash):

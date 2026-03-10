@@ -2,20 +2,18 @@
 from abc import ABC, abstractmethod
 from typing import Optional, List
 
+from app.domain.entities.ticket_entity import TicketEntity
+
 
 class ITicketRepository(ABC):
     @abstractmethod
-    async def create(
-        self, db, user_id: int, content: str, description: str,
-        customer_name: Optional[str], customer_phone: Optional[str],
-        email: Optional[str]
-    ) -> object: ...
+    async def create(self, ticket: TicketEntity) -> TicketEntity: ...
 
     @abstractmethod
-    async def get_by_id(self, db, ticket_id: int) -> Optional[object]: ...
+    async def get_by_id(self, ticket_id: int) -> Optional[TicketEntity]: ...
 
     @abstractmethod
-    async def get_recent_by_user_id(self, db, user_id: int, limit: int) -> List[object]: ...
+    async def get_recent_by_user_id(self, user_id: int, limit: int = 10) -> List[TicketEntity]: ...
 
     @abstractmethod
-    async def update(self, db, ticket: object) -> object: ...
+    async def update(self, ticket: TicketEntity) -> TicketEntity: ...

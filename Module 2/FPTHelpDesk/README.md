@@ -182,3 +182,13 @@ cd backend && python ingest.py --force
 - **HITL**: Khi `ENABLE_HITL=true`, các thao tác tạo/sửa/xóa sẽ yêu cầu xác nhận. Đặt `ENABLE_HITL=false` để tắt.
 - **Agent State**: Context hội thoại được lưu trong PostgreSQL — reload trang vẫn giữ context.
 - **pgvector**: Embeddings của tài liệu chính sách được lưu trong bảng `langchain_pg_embedding`.
+
+┌─────────────────────────────────────────┐
+│   Presentation Layer (FastAPI)          │  ← HTTP/API
+├─────────────────────────────────────────┤
+│   Application Layer (Use Cases)         │  ← Business Workflows
+├─────────────────────────────────────────┤
+│   Infrastructure Layer (Implementations) │  ← Database, Security
+├─────────────────────────────────────────┤
+│   Domain Layer (Business Logic)         │  ← Entities, Interfaces
+└─────────────────────────────────────────┘

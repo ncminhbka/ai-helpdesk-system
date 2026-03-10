@@ -3,12 +3,20 @@ Ticket tools for the Ticket Agent.
 Handles support ticket creation, tracking, and updating.
 """
 from typing import Annotated
+
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
 
-from app.infrastructure.database.models.ticket_model import Ticket
+from app.application.dtos.ticket_dto import TicketCreateDTO, TicketResponseDTO, TicketUpdateDTO
 from app.application.use_cases.ticket_use_case import TicketUseCase
+from app.domain.exceptions import InvalidTicketStatusError, TicketNotFoundError
+from app.infrastructure.database.engine import async_session_maker
 from app.infrastructure.hitl.decorator import hitl_protected
+from app.infrastructure.repositories.ticket_repository import TicketRepository
+
+
+def _get_use_case(db) -> TicketUseCase:
+    return TicketUseCase(TicketRepository(db))
 
 
 # ==================== TOOLS ====================
@@ -37,15 +45,18 @@ async def create_ticket(
         return "❌ Lỗi: Không thể xác định người dùng. Vui lòng đăng nhập lại."
 
     try:
-        ticket = await TicketUseCase.create_ticket(
-            user_id=user_id,
-            content=content,
-            description=description,
-            customer_name=customer_name,
-            customer_phone=customer_phone,
-            email=email,
-        )
-
+        async with async_session_maker() as db:
+            use_case = _get_use_case(db)
+            ticket = await use_case.create_ticket(
+                TicketCreateDTO(
+                    user_id=user_id,
+                    content=content,
+                    description=description,
+                    customer_name=customer_name,
+                    customer_phone=customer_phone,
+                    email=email,
+                )
+            )
         return (
             f"✅ Ticket created successfully!\n"
             f"🎫 Ticket ID: {ticket.ticket_id}\n"
@@ -53,7 +64,7 @@ async def create_ticket(
             f"📋 Description: {description}\n"
             f"👤 Name: {customer_name or 'N/A'}\n"
             f"📧 Email: {email or 'N/A'}\n"
-            f"📌 Status: {ticket.status}"
+            f"📌 Status: {ticket.status.value}"
         )
     except Exception as e:
         return f"❌ Error: {str(e)}"
@@ -71,18 +82,20 @@ async def track_ticket(
     Args:
         ticket_id: Specific ticket ID to track (optional)
     """
-    if ticket_id:
-        ticket = await TicketUseCase.get_ticket_by_id(ticket_id)
-        if not ticket:
-            return f"❌ Ticket #{ticket_id} not found."
-        return _format_ticket(ticket)
-    else:
-        if not user_id:
-            return "❌ Lỗi: Không thể xác định người dùng. Vui lòng đăng nhập lại."
-        tickets = await TicketUseCase.get_recent_tickets_by_user(user_id)
-        if not tickets:
-            return "📋 No tickets found."
-        return "\n\n---\n\n".join(_format_ticket(t) for t in tickets)
+    async with async_session_maker() as db:
+        use_case = _get_use_case(db)
+        if ticket_id:
+            ticket = await use_case.get_ticket_by_id(ticket_id)
+            if not ticket:
+                return f"❌ Ticket #{ticket_id} not found."
+            return _format_ticket(ticket)
+        else:
+            if not user_id:
+                return "❌ Lỗi: Không thể xác định người dùng. Vui lòng đăng nhập lại."
+            tickets = await use_case.get_recent_tickets_by_user(user_id)
+            if not tickets:
+                return "📋 No tickets found."
+            return "\n\n---\n\n".join(_format_ticket(t) for t in tickets)
 
 
 @tool
@@ -108,24 +121,31 @@ async def update_ticket(
         customer_phone: Updated phone (optional)
         email: Updated email (optional)
     """
-    success, message, updates = await TicketUseCase.update_ticket(
-        ticket_id=ticket_id,
-        content=content,
-        description=description,
-        status=status,
-        customer_name=customer_name,
-        customer_phone=customer_phone,
-        email=email,
-    )
+    try:
+        async with async_session_maker() as db:
+            use_case = _get_use_case(db)
+            ticket = await use_case.update_ticket(
+                ticket_id=ticket_id,
+                data=TicketUpdateDTO(
+                    content=content,
+                    description=description,
+                    status=status,
+                    customer_name=customer_name,
+                    customer_phone=customer_phone,
+                    email=email,
+                ),
+            )
+        return f"✅ Ticket #{ticket.ticket_id} updated.\n{_format_ticket(ticket)}"
+    except TicketNotFoundError as e:
+        return f"❌ {str(e)}"
+    except InvalidTicketStatusError as e:
+        return f"❌ {str(e)}"
+    except Exception as e:
+        return f"❌ Error: {str(e)}"
 
-    if not success:
-        return message
 
-    return f"{message}\n" + "\n".join(f"  • {u}" for u in updates)
-
-
-def _format_ticket(ticket: Ticket) -> str:
-    """Format a ticket for display."""
+def _format_ticket(ticket: TicketResponseDTO) -> str:
+    """Format a ticket DTO for display."""
     time_str = ticket.time.strftime("%Y-%m-%d %H:%M") if ticket.time else "N/A"
     return (
         f"🎫 Ticket #{ticket.ticket_id}\n"
@@ -135,5 +155,5 @@ def _format_ticket(ticket: Ticket) -> str:
         f"  👤 Name: {ticket.customer_name or 'N/A'}\n"
         f"  📞 Phone: {ticket.customer_phone or 'N/A'}\n"
         f"  📧 Email: {ticket.email or 'N/A'}\n"
-        f"  📌 Status: {ticket.status}"
+        f"  📌 Status: {ticket.status.value}"
     )

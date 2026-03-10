@@ -1,89 +1,78 @@
 from typing import List, Optional
 
-from app.infrastructure.database.engine import async_session_maker
-from app.infrastructure.database.models.ticket_model import Ticket
+from app.application.dtos.ticket_dto import TicketCreateDTO, TicketResponseDTO, TicketUpdateDTO
 from app.domain.entities.enums import TicketStatus
-from app.infrastructure.repositories.ticket_repository import TicketRepository
+from app.domain.entities.ticket_entity import TicketEntity
+from app.domain.exceptions import InvalidTicketStatusError, TicketNotFoundError
+from app.domain.interfaces.ticket_repository import ITicketRepository
 
 
 class TicketUseCase:
+    def __init__(self, ticket_repo: ITicketRepository):
+        self.ticket_repo = ticket_repo
 
     @staticmethod
-    async def create_ticket(
-        user_id: int,
-        content: str,
-        description: str,
-        customer_name: Optional[str] = None,
-        customer_phone: Optional[str] = None,
-        email: Optional[str] = None,
-    ) -> Ticket:
-        async with async_session_maker() as session:
-            ticket = await TicketRepository.create(
-                db=session,
-                user_id=user_id,
-                content=content,
-                description=description,
-                customer_name=customer_name,
-                customer_phone=customer_phone,
-                email=email,
+    def _to_dto(entity: TicketEntity) -> TicketResponseDTO:
+        return TicketResponseDTO(
+            ticket_id=entity.ticket_id,
+            user_id=entity.user_id,
+            content=entity.content,
+            description=entity.description,
+            status=entity.status,
+            customer_name=entity.customer_name,
+            customer_phone=entity.customer_phone,
+            email=entity.email,
+            time=entity.time,
+        )
+
+    async def create_ticket(self, data: TicketCreateDTO) -> TicketResponseDTO:
+        entity = TicketEntity(
+            ticket_id=None,
+            user_id=data.user_id,
+            content=data.content,
+            description=data.description,
+            status=TicketStatus.PENDING,
+            customer_name=data.customer_name,
+            customer_phone=data.customer_phone,
+            email=data.email,
+        )
+        saved = await self.ticket_repo.create(entity)
+        return self._to_dto(saved)
+
+    async def get_ticket_by_id(self, ticket_id: int) -> Optional[TicketResponseDTO]:
+        entity = await self.ticket_repo.get_by_id(ticket_id)
+        return self._to_dto(entity) if entity else None
+
+    async def get_recent_tickets_by_user(self, user_id: int, limit: int = 10) -> List[TicketResponseDTO]:
+        entities = await self.ticket_repo.get_recent_by_user_id(user_id, limit)
+        return [self._to_dto(e) for e in entities]
+
+    async def update_ticket(self, ticket_id: int, data: TicketUpdateDTO) -> TicketResponseDTO:
+        entity = await self.ticket_repo.get_by_id(ticket_id)
+        if not entity:
+            raise TicketNotFoundError(f"Ticket #{ticket_id} not found.")
+        if entity.status in (TicketStatus.FINISHED, TicketStatus.CANCELED):
+            raise InvalidTicketStatusError(
+                f"Cannot update ticket #{ticket_id}: status is '{entity.status.value}'."
             )
-            return ticket
 
-    @staticmethod
-    async def get_ticket_by_id(ticket_id: int) -> Optional[Ticket]:
-        async with async_session_maker() as session:
-            return await TicketRepository.get_by_id(session, ticket_id)
+        if data.content is not None:
+            entity.content = data.content
+        if data.description is not None:
+            entity.description = data.description
+        if data.status is not None:
+            valid_statuses = [s.value for s in TicketStatus]
+            if data.status not in valid_statuses:
+                raise InvalidTicketStatusError(
+                    f"Invalid status '{data.status}'. Valid: {', '.join(valid_statuses)}"
+                )
+            entity.status = TicketStatus(data.status)
+        if data.customer_name is not None:
+            entity.customer_name = data.customer_name
+        if data.customer_phone is not None:
+            entity.customer_phone = data.customer_phone
+        if data.email is not None:
+            entity.email = data.email
 
-    @staticmethod
-    async def get_recent_tickets_by_user(user_id: int, limit: int = 10) -> List[Ticket]:
-        async with async_session_maker() as session:
-            return await TicketRepository.get_recent_by_user_id(session, user_id, limit)
-
-    @staticmethod
-    async def update_ticket(
-        ticket_id: int,
-        content: Optional[str] = None,
-        description: Optional[str] = None,
-        status: Optional[str] = None,
-        customer_name: Optional[str] = None,
-        customer_phone: Optional[str] = None,
-        email: Optional[str] = None,
-    ) -> tuple[bool, str, List[str]]:
-        """Returns (success, message, list_of_updates)."""
-        async with async_session_maker() as session:
-            ticket = await TicketRepository.get_by_id(session, ticket_id)
-
-            if not ticket:
-                return False, f"❌ Ticket #{ticket_id} not found.", []
-
-            if ticket.status in [TicketStatus.FINISHED.value, TicketStatus.CANCELED.value]:
-                return False, f"❌ Cannot update ticket #{ticket_id}: status is '{ticket.status}'.", []
-
-            updates = []
-            if content:
-                ticket.content = content
-                updates.append(f"Content → {content}")
-            if description:
-                ticket.description = description
-                updates.append(f"Description → {description}")
-            if status:
-                valid_statuses = [s.value for s in TicketStatus]
-                if status not in valid_statuses:
-                    return False, f"❌ Invalid status '{status}'. Valid: {', '.join(valid_statuses)}", []
-                ticket.status = status
-                updates.append(f"Status → {status}")
-            if customer_name:
-                ticket.customer_name = customer_name
-                updates.append(f"Name → {customer_name}")
-            if customer_phone:
-                ticket.customer_phone = customer_phone
-                updates.append(f"Phone → {customer_phone}")
-            if email:
-                ticket.email = email
-                updates.append(f"Email → {email}")
-
-            if not updates:
-                return False, "⚠️ No fields to update.", []
-
-            await TicketRepository.update(session, ticket)
-            return True, f"✅ Ticket #{ticket_id} updated.", updates
+        updated = await self.ticket_repo.update(entity)
+        return self._to_dto(updated)

@@ -1,18 +1,14 @@
 """Chat and session management endpoints."""
 from typing import Any, List
-from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.infrastructure.database.engine import get_db
-from app.infrastructure.database.models.user_model import User
-from app.infrastructure.database.models.chat_model import ChatSession
-from app.application.use_cases.chat_use_case import ChatUseCase
+from fastapi import APIRouter, Depends, HTTPException, Request
+
 from app.application.dtos.chat_dto import (
-    ChatRequest, ChatResponse, SessionCreate,
-    SessionResponse, MessageResponse,
+    ChatRequest, ChatResponse, SessionCreate, SessionResponse, MessageResponse,
 )
-from app.presentation.dependencies import get_current_user
-from app.application.utils.helpers import safe_json_loads
+from app.application.use_cases.chat_use_case import ChatUseCase
+from app.domain.entities.user_entity import UserEntity
+from app.presentation.dependencies import get_chat_use_case, get_current_user
 
 router = APIRouter()
 
@@ -21,21 +17,20 @@ router = APIRouter()
 async def chat(
     request: ChatRequest,
     req: Request,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    current_user: UserEntity = Depends(get_current_user),
+    use_case: ChatUseCase = Depends(get_chat_use_case),
 ) -> Any:
     """Send a message and get response from the multi-agent system."""
     try:
         if not hasattr(req.app.state, "graph"):
             raise ValueError("Graph not initialized")
 
-        return await ChatUseCase.process_message(
-            db,
-            request.session_id,
-            current_user.id,
-            current_user.email,
-            request.message,
-            req.app.state.graph,
+        return await use_case.process_message(
+            session_id=request.session_id,
+            user_id=current_user.id,
+            user_email=current_user.email,
+            message=request.message,
+            graph=req.app.state.graph,
         )
     except Exception as e:
         import traceback
@@ -46,36 +41,50 @@ async def chat(
 @router.post("/sessions", response_model=SessionResponse)
 async def create_session(
     request: SessionCreate = None,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    current_user: UserEntity = Depends(get_current_user),
+    use_case: ChatUseCase = Depends(get_chat_use_case),
 ) -> Any:
     """Create a new chat session."""
     title = request.title if request else "New Chat"
-    return await ChatUseCase.create_session(db, current_user.id, title)
+    entity = await use_case.create_session(current_user.id, title)
+    return SessionResponse(
+        session_id=entity.session_id,
+        title=entity.title,
+        created_at=entity.created_at,
+        updated_at=entity.updated_at,
+    )
 
 
 @router.get("/sessions", response_model=List[SessionResponse])
 async def list_sessions(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    current_user: UserEntity = Depends(get_current_user),
+    use_case: ChatUseCase = Depends(get_chat_use_case),
 ) -> Any:
     """List all sessions for current user."""
-    result = await ChatUseCase.list_session_by_user_id(db, current_user.id)
-    return result
+    entities = await use_case.list_session_by_user_id(current_user.id)
+    return [
+        SessionResponse(
+            session_id=e.session_id,
+            title=e.title,
+            created_at=e.created_at,
+            updated_at=e.updated_at,
+        )
+        for e in entities
+    ]
 
 
 @router.get("/sessions/{session_id}")
 async def get_session(
     session_id: str,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    current_user: UserEntity = Depends(get_current_user),
+    use_case: ChatUseCase = Depends(get_chat_use_case),
 ) -> Any:
     """Get session with all messages."""
-    session = await ChatUseCase.get_session(db, session_id, current_user.id)
+    session = await use_case.get_session(session_id, current_user.id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    messages = await ChatUseCase.get_messages(db, session_id)
+    messages = await use_case.get_messages(session_id)
 
     return {
         "session_id": session.session_id,
@@ -87,7 +96,7 @@ async def get_session(
                 "role": m.role,
                 "content": m.content,
                 "message_type": m.message_type,
-                "metadata": safe_json_loads(m.metadata_json) if m.metadata_json else None,
+                "metadata": m.metadata,
                 "created_at": m.created_at.isoformat() + "Z",
             }
             for m in messages
@@ -98,13 +107,13 @@ async def get_session(
 @router.delete("/sessions/{session_id}")
 async def delete_session(
     session_id: str,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    current_user: UserEntity = Depends(get_current_user),
+    use_case: ChatUseCase = Depends(get_chat_use_case),
 ) -> Any:
     """Delete a chat session and all its messages."""
-    session = await ChatUseCase.get_session(db, session_id, current_user.id)
+    session = await use_case.get_session(session_id, current_user.id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    await ChatUseCase.delete_session(db, session)
+    await use_case.delete_session(session_id)
     return {"detail": "Session deleted"}

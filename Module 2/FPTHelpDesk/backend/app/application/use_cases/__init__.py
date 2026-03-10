@@ -1,0 +1,4 @@
+# use cases là các lớp hoặc hàm đại diện cho các hành động hoặc quy trình kinh doanh trong ứng dụng.
+# Chúng thường được tổ chức theo các chức năng hoặc lĩnh vực cụ thể của ứng dụng, ví dụ như quản lý người dùng, xử lý đặt phòng, v.v.
+# Mỗi use case sẽ thực hiện một nhiệm vụ cụ thể, có thể bao gồm việc tương tác với các repository để truy xuất hoặc lưu trữ dữ liệu, gọi các service khác để thực hiện các tác vụ phức tạp hơn, và trả về kết quả cho controller hoặc API endpoint.
+# Việc sử dụng use cases giúp tách biệt logic kinh doanh khỏi các lớp khác như controller hoặc repository, làm cho mã nguồn dễ bảo trì và mở rộng hơn. Nó cũng giúp đảm bảo rằng các quy trình kinh doanh được thực hiện một cách nhất quán trên toàn bộ ứng dụng.

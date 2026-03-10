@@ -1,23 +1,19 @@
 """Abstract interface for booking data access."""
 from abc import ABC, abstractmethod
 from typing import Optional, List
-from datetime import datetime
+
+from app.domain.entities.booking_entity import BookingEntity
 
 
 class IBookingRepository(ABC):
     @abstractmethod
-    async def create(
-        self, db, user_id: int, room_name: Optional[str],
-        customer_name: Optional[str], customer_phone: Optional[str],
-        email: Optional[str], reason: str, time: datetime,
-        note: Optional[str]
-    ) -> object: ...
+    async def create(self, booking: BookingEntity) -> BookingEntity: ...
 
     @abstractmethod
-    async def get_by_id(self, db, booking_id: int) -> Optional[object]: ...
+    async def get_by_id(self, booking_id: int) -> Optional[BookingEntity]: ...
 
     @abstractmethod
-    async def get_recent_by_user_id(self, db, user_id: int, limit: int) -> List[object]: ...
+    async def get_recent_by_user_id(self, user_id: int, limit: int = 10) -> List[BookingEntity]: ...
 
     @abstractmethod
-    async def update(self, db, booking: object) -> object: ...
+    async def update(self, booking: BookingEntity) -> BookingEntity: ...
