@@ -13,6 +13,7 @@ class BookingUseCase:
         self.booking_repo = booking_repo
 
     @staticmethod
+    # Private method to convert BookingEntity to BookingResponseDTO
     def _to_dto(entity: BookingEntity) -> BookingResponseDTO:
         return BookingResponseDTO(
             booking_id=entity.booking_id,

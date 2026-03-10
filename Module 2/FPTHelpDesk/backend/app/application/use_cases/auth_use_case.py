@@ -2,7 +2,7 @@
 from typing import Optional
 
 from app.domain.entities.user_entity import UserEntity
-from app.domain.interfaces.user_repository import IUserRepository
+from app.domain.interfaces.user_repository import IUserRepository # CHỉ phụ thuộc vào tầng Domain
 from app.infrastructure.security.jwt_bcrypt import verify_password
 
 
