@@ -35,7 +35,7 @@ class TicketUseCase:
             customer_name=data.customer_name,
             customer_phone=data.customer_phone,
             email=data.email,
-        )
+        ) # có thể viết hàm helper để convert DTO sang Entity nếu thấy cần thiết, nhưng ở đây chỉ có 1 use case nên viết trực tiếp cũng ổn.
         saved = await self.ticket_repo.create(entity)
         return self._to_dto(saved)
 

@@ -1,15 +1,15 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field # chấp nhận pydantic để làm DTO vì nó có nhiều tính năng hữu ích như validation, serialization, v.v.
 
-from app.domain.entities.enums import BookingStatus
+from app.domain.entities.enums import BookingStatus # Chỉ phụ thuộc tầng Domain trong cùng.
 
 
 class BookingCreateDTO(BaseModel):
     """Input DTO for creating a new booking."""
     user_id: int
-    room_name: Optional[str] = Field(default=None, description="Tên phòng họp (VD: CR7 tầng 2, OKOK tầng 3)")
+    room_name: Optional[str] = Field(default=None, description="Tên phòng họp")
     reason: str = Field(description="Lý do đặt phòng")
     time: datetime = Field(description="Thời gian đặt phòng (timezone-aware UTC)")
     customer_name: Optional[str] = Field(default=None, description="Tên người đặt")

@@ -5,7 +5,7 @@ from app.application.dtos.user_dto import UserCreate, UserResponse
 from app.domain.entities.user_entity import UserEntity
 from app.domain.exceptions import EmailAlreadyExistsError
 from app.domain.interfaces.user_repository import IUserRepository
-from app.infrastructure.security.jwt_bcrypt import get_password_hash
+from app.infrastructure.security.jwt_bcrypt import get_password_hash # vi phạm clean architecture
 
 
 class UserUseCase:

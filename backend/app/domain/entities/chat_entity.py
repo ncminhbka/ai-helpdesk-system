@@ -19,6 +19,6 @@ class MessageEntity:
     session_id: str
     role: str
     content: str
-    message_type: str = "message"
+    message_type: str = "message" 
     metadata: Optional[dict] = field(default=None)
     created_at: Optional[datetime] = None

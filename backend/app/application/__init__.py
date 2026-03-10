@@ -1,4 +1,4 @@
-# Application là tầng thứ (2) từ trong ra ngoài, chứa các use cases, DTOs và interfaces.
+# Application là tầng thứ (2) từ trong ra ngoài, chứa các use cases, DTOs.
 # Use cases chứa logic business của ứng dụng, thực hiện các hành động cụ thể dựa trên yêu cầu của người dùng hoặc hệ thống.
 # DTOs (Data Transfer Objects) là các lớp hoặc cấu trúc dữ liệu được sử dụng để truyền dữ liệu giữa các lớp hoặc module trong ứng dụng, giúp tách biệt giữa các tầng của ứng dụng và đảm bảo rằng dữ liệu được truyền đi một cách rõ ràng và có cấu trúc.
 # Interfaces định nghĩa các phương thức và thuộc tính mà các lớp khác phải triển khai, tạo ra một hợp đồng giữa các phần khác nhau của ứng dụng, đảm bảo rằng các phần này có thể tương tác với nhau một cách nhất quán và dễ dàng thay thế hoặc mở rộng trong tương lai.
