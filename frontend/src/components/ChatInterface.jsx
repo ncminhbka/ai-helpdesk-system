@@ -105,6 +105,22 @@ function ConfirmCard({ data, fieldLabels, onRespond, disabled }) {
 }
 
 
+function renderUserContent(content) {
+    try {
+        const parsed = JSON.parse(content)
+        if (parsed.action === 'approve') {
+            const hasEdits = parsed.edits && Object.keys(parsed.edits).length > 0
+            return hasEdits ? '✅ Đã xác nhận (có chỉnh sửa)' : '✅ Đã xác nhận'
+        }
+        if (parsed.action === 'reject') {
+            return '❌ Đã hủy thao tác'
+        }
+    } catch {
+        // not JSON — render bình thường
+    }
+    return content
+}
+
 export default function ChatInterface({ session, onSessionUpdate }) {
     const [messages, setMessages] = useState([])
     const [inputValue, setInputValue] = useState('')
@@ -317,7 +333,9 @@ export default function ChatInterface({ session, onSessionUpdate }) {
                                             <span className="text-amber-300 text-sm font-medium">Cần xác nhận</span>
                                         </div>
                                     )}
-                                    <div className="markdown-content whitespace-pre-wrap">{msg.content}</div>
+                                    <div className="markdown-content whitespace-pre-wrap">
+                                        {msg.role === 'user' ? renderUserContent(msg.content) : msg.content}
+                                    </div>
 
                                     {/* Render ConfirmCard for the pending confirm message */}
                                     {pendingConfirm && pendingConfirm.index === idx && (
