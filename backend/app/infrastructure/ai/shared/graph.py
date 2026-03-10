@@ -12,7 +12,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import tools_condition, ToolNode
 
 
-from app.application.utils.state import AgentState
+from app.infrastructure.ai.shared.state import AgentState
 
 from app.infrastructure.ai.primary.agent import get_primary_agent
 from app.infrastructure.ai.booking.agent import get_booking_agent, booking_tools

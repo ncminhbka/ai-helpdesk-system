@@ -11,7 +11,7 @@ from langchain_core.runnables import Runnable, RunnableConfig
 from pydantic import BaseModel, Field
 from typing import Literal, Optional
 
-from app.application.utils.state import AgentState
+from app.infrastructure.ai.shared.state import AgentState
 
 
 # ==================== ASSISTANT CLASS ====================

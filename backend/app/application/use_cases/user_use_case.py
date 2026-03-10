@@ -4,13 +4,14 @@ from typing import Optional
 from app.application.dtos.user_dto import UserCreate, UserResponse
 from app.domain.entities.user_entity import UserEntity
 from app.domain.exceptions import EmailAlreadyExistsError
+from app.domain.interfaces.security import IPasswordHasher
 from app.domain.interfaces.user_repository import IUserRepository
-from app.infrastructure.security.jwt_bcrypt import get_password_hash # vi phạm clean architecture
 
 
 class UserUseCase:
-    def __init__(self, user_repo: IUserRepository):
+    def __init__(self, user_repo: IUserRepository, hasher: IPasswordHasher):
         self.user_repo = user_repo
+        self.hasher = hasher
 
     async def get_by_email(self, email: str) -> Optional[UserEntity]:
         return await self.user_repo.get_by_email(email)
@@ -25,7 +26,7 @@ class UserUseCase:
         entity = UserEntity(
             id=None,
             email=user_in.email,
-            password_hash=get_password_hash(user_in.password),
+            password_hash=self.hasher.hash(user_in.password),
             name=user_in.name,
         )
         return await self.user_repo.create(entity)

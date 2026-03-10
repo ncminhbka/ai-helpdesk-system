@@ -3,13 +3,11 @@ Chat use case - Orchestrates LangGraph invocation and message persistence.
 Handles session management, HITL resume via Command(resume=...), and message saving.
 """
 import json
-from typing import Optional, Any, List
-
-from langchain_core.messages import HumanMessage, AIMessage
-from langgraph.types import Command
+from typing import Optional, List
 
 from app.domain.entities.chat_entity import ChatSessionEntity, MessageEntity
 from app.domain.interfaces.chat_repository import IChatRepository
+from app.domain.interfaces.graph_runner import IGraphRunner
 
 
 class ChatUseCase:
@@ -50,22 +48,48 @@ class ChatUseCase:
         user_id: int,
         user_email: str,
         message: str,
-        graph: Any,
+        runner: IGraphRunner,
     ) -> dict:
-        """Process a user message through the LangGraph."""
+        """
+        Luồng xử lý một tin nhắn từ user:
+
+        1. Lưu tin nhắn user vào DB ngay lập tức (trước khi chạy AI).
+
+        2. Kiểm tra trạng thái graph của session hiện tại:
+           - Nếu graph đang BỊ INTERRUPT (đang chờ user xác nhận HITL):
+             → Parse tin nhắn thành payload approve/reject
+             → Resume graph từ điểm bị dừng
+
+           - Nếu graph ĐANG BÌNH THƯỜNG (chưa bị interrupt):
+             → Invoke graph với tin nhắn mới của user
+
+        3. Kiểm tra kết quả trả về từ graph:
+           - Nếu result chứa "__interrupt__": graph vừa dừng lại để chờ xác nhận
+             → Xây dựng confirm message (hiển thị thông tin cần xác nhận cho user)
+             → Lưu confirm message vào DB với type="confirm"
+             → Trả về response type="confirm" kèm action và data để frontend hiển thị nút xác nhận
+
+           - Nếu result BÌNH THƯỜNG (không có interrupt):
+             → Trích xuất text cuối cùng từ AI messages trong result
+             → Lưu AI response vào DB với type="message"
+             → Trả về response type="message"
+
+        4. Nếu có lỗi bất kỳ: lưu error message vào DB và trả về type="error".
+        """
+        # Bước 1: Lưu tin nhắn user vào DB
         await self.save_message(session_id, "user", message)
 
-        config = {"configurable": {"thread_id": session_id}}
-
         try:
-            current_state = await graph.aget_state(config)
-            is_interrupted = bool(current_state.next)
-
-            if is_interrupted:
-                result = await self._handle_hitl_resume(graph, config, message)
+            # Bước 2: Quyết định invoke mới hay resume HITL
+            if await runner.is_interrupted(session_id):
+                # Graph đang chờ xác nhận → parse approve/reject rồi resume
+                payload = self._parse_hitl_payload(message)
+                result = await runner.resume(session_id, payload)
             else:
-                result = await self._invoke_graph(graph, config, message, user_id, user_email, session_id)
+                # Graph rảnh → invoke với message mới
+                result = await runner.invoke(session_id, user_id, user_email, message)
 
+            # Bước 3a: Graph vừa dừng lại để chờ xác nhận (HITL interrupt)
             if isinstance(result, dict) and "__interrupt__" in result:
                 interrupt_data = result["__interrupt__"][0].value
                 response_content = self._build_confirm_message(interrupt_data)
@@ -75,7 +99,7 @@ class ChatUseCase:
                 await self.save_message(
                     session_id, "assistant", response_content,
                     message_type=response_type,
-                    metadata=interrupt_data,
+                    metadata=interrupt_data,  # lưu data để frontend render nút xác nhận
                 )
                 return {
                     "type": response_type,
@@ -84,7 +108,8 @@ class ChatUseCase:
                     "data": interrupt_data.get("args"),
                 }
 
-            response_content = self._extract_response(result)
+            # Bước 3b: Graph chạy xong bình thường → trích xuất AI response
+            response_content = runner.extract_response(result)
             response_type = "message"
 
             await self._maybe_update_title(session_id, message)
@@ -92,10 +117,21 @@ class ChatUseCase:
 
             return {"type": response_type, "content": response_content}
 
+        # Bước 4: Xử lý lỗi bất ngờ
         except Exception as e:
             error_msg = f"Xin lỗi, đã có lỗi xảy ra: {str(e)}"
             await self.save_message(session_id, "assistant", error_msg, "error")
             return {"type": "error", "content": error_msg}
+
+    def _parse_hitl_payload(self, message: str) -> dict:
+        """Parse user message thành HITL payload. Business logic thuần túy."""
+        try:
+            return json.loads(message)
+        except (json.JSONDecodeError, TypeError):
+            text = message.strip().lower()
+            if text in ["y", "yes", "có", "ok", "confirm", "đồng ý"]:
+                return {"action": "approve"}
+            return {"action": "reject"}
 
     def _build_confirm_message(self, interrupt_data: dict) -> str:
         display_name = interrupt_data.get("display_name", "Thao tác")
@@ -112,44 +148,7 @@ class ChatUseCase:
         lines.append("Nhấn **Xác nhận** để thực hiện, **Sửa** để chỉnh sửa, hoặc **Hủy** để hủy thao tác.")
         return "\n".join(lines)
 
-    async def _invoke_graph(self, graph, config, message, user_id, user_email, session_id) -> dict:
-        input_state = {
-            "messages": [HumanMessage(content=message)],
-            "user_id": user_id,
-            "user_email": user_email,
-            "session_id": session_id,
-        }
-        return await graph.ainvoke(input_state, config)
-
-    async def _handle_hitl_resume(self, graph, config, message) -> dict:
-        try:
-            resume_payload = json.loads(message)
-        except (json.JSONDecodeError, TypeError):
-            text = message.strip().lower()
-            if text in ["y", "yes", "có", "ok", "confirm", "đồng ý"]:
-                resume_payload = {"action": "approve"}
-            else:
-                resume_payload = {"action": "reject"}
-        return await graph.ainvoke(Command(resume=resume_payload), config)
-
     async def _maybe_update_title(self, session_id: str, message: str) -> None:
         msg_count = await self.chat_repo.get_message_count(session_id)
         if msg_count <= 1:
             await self.update_session_title(session_id, message)
-
-    @staticmethod
-    def _extract_response(result: dict) -> str:
-        messages = result.get("messages", [])
-        for msg in reversed(messages):
-            if isinstance(msg, AIMessage) and msg.content:
-                content = msg.content
-                if isinstance(content, list):
-                    text_parts = [
-                        p.get("text", "") for p in content
-                        if isinstance(p, dict) and p.get("text")
-                    ]
-                    if text_parts:
-                        return "\n".join(text_parts)
-                elif isinstance(content, str) and content.strip():
-                    return content
-        return "Tôi không thể xử lý yêu cầu này. Vui lòng thử lại."

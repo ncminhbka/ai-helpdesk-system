@@ -11,7 +11,7 @@ from app.application.dtos.ticket_dto import TicketCreateDTO, TicketResponseDTO, 
 from app.application.use_cases.ticket_use_case import TicketUseCase
 from app.domain.exceptions import InvalidTicketStatusError, TicketNotFoundError
 from app.infrastructure.database.engine import async_session_maker
-from app.infrastructure.hitl.decorator import hitl_protected
+from app.infrastructure.ai.hitl.decorator import hitl_protected
 from app.infrastructure.repositories.ticket_repository import TicketRepository
 
 
