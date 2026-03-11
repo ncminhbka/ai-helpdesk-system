@@ -6,7 +6,7 @@ from typing import Optional, List
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession # AsyncSession là một phần của SQLAlchemy 1.4+, cho phép thực hiện các truy vấn cơ sở dữ liệu một cách bất đồng bộ, giúp cải thiện hiệu suất và khả năng mở rộng của ứng dụng khi làm việc với cơ sở dữ liệu.
 
-from app.application.utils.helpers import truncate_text, safe_json_dumps
+from app.infrastructure.utils.helpers import truncate_text, safe_json_dumps
 from app.domain.entities.chat_entity import ChatSessionEntity, MessageEntity
 from app.domain.interfaces.chat_repository import IChatRepository
 

@@ -1,7 +1,7 @@
 """
 FastAPI dependencies — full DI chain for all repos and use cases.
 """
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,7 +22,11 @@ from app.infrastructure.repositories.ticket_repository import TicketRepository
 from app.infrastructure.repositories.user_repository import UserRepository
 from app.infrastructure.security.jwt_bcrypt import decode_token
 from app.infrastructure.security.password_hasher import BcryptPasswordHasher
+from app.infrastructure.security.token_service import JwtTokenService
+from app.infrastructure.ai.graph_runner import LangGraphRunner
 from app.domain.interfaces.security import IPasswordHasher
+from app.domain.interfaces.token_service import ITokenService
+from app.domain.interfaces.graph_runner import IGraphRunner
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
@@ -55,11 +59,16 @@ def get_password_hasher() -> IPasswordHasher:
     return BcryptPasswordHasher()
 
 
+def get_token_service() -> ITokenService:
+    return JwtTokenService()
+
+
 def get_auth_use_case(
     repo: IUserRepository = Depends(get_user_repository),
     hasher: IPasswordHasher = Depends(get_password_hasher),
+    token_service: ITokenService = Depends(get_token_service),
 ) -> AuthUseCase:
-    return AuthUseCase(repo, hasher)
+    return AuthUseCase(repo, hasher, token_service)
 
 
 def get_user_use_case(
@@ -85,6 +94,12 @@ def get_chat_use_case(
     repo: IChatRepository = Depends(get_chat_repository),
 ) -> ChatUseCase:
     return ChatUseCase(repo)
+
+
+def get_graph_runner(req: Request) -> IGraphRunner:
+    if not hasattr(req.app.state, "graph"):
+        raise HTTPException(status_code=503, detail="Graph not initialized")
+    return LangGraphRunner(req.app.state.graph)
 
 
 # ---------------------------------------------------------------------------

@@ -10,7 +10,7 @@ from langchain_core.runnables import Runnable
 from app.infrastructure.ai.shared.base import Assistant, CompleteOrEscalate
 from app.infrastructure.ai.ticket.tools import create_ticket, track_ticket, update_ticket
 from app.infrastructure.ai.ticket.prompt import TICKET_SYSTEM_PROMPT
-from app.application.utils.helpers import get_vietnam_time
+from app.infrastructure.utils.helpers import get_vietnam_time
 from dotenv import load_dotenv
 
 load_dotenv()

@@ -1,15 +1,15 @@
 """Chat and session management endpoints."""
 from typing import Any, List
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.application.dtos.chat_dto import (
     ChatRequest, ChatResponse, SessionCreate, SessionResponse, MessageResponse,
 )
 from app.application.use_cases.chat_use_case import ChatUseCase
 from app.domain.entities.user_entity import UserEntity
-from app.infrastructure.ai.graph_runner import LangGraphRunner
-from app.presentation.dependencies import get_chat_use_case, get_current_user
+from app.domain.interfaces.graph_runner import IGraphRunner
+from app.presentation.dependencies import get_chat_use_case, get_current_user, get_graph_runner
 
 router = APIRouter()
 
@@ -17,21 +17,18 @@ router = APIRouter()
 @router.post("/chat", response_model=ChatResponse)
 async def chat(
     request: ChatRequest,
-    req: Request,
     current_user: UserEntity = Depends(get_current_user),
     use_case: ChatUseCase = Depends(get_chat_use_case),
+    runner: IGraphRunner = Depends(get_graph_runner),
 ) -> Any:
     """Send a message and get response from the multi-agent system."""
     try:
-        if not hasattr(req.app.state, "graph"):
-            raise ValueError("Graph not initialized")
-
         return await use_case.process_message(
             session_id=request.session_id,
             user_id=current_user.id,
             user_email=current_user.email,
             message=request.message,
-            runner=LangGraphRunner(req.app.state.graph),
+            runner=runner,
         )
     except Exception as e:
         import traceback

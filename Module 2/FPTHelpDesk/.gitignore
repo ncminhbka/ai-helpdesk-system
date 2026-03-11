@@ -16,6 +16,11 @@ build/
 venv/
 env/
 
+# ==================== uv ====================
+# uv.lock phải được commit (reproducible builds)
+# Cache thì không
+.uv/
+
 # ==================== Database & Local Data ====================
 *.db
 *.sqlite3

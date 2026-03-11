@@ -10,7 +10,7 @@ from langchain_core.runnables import Runnable
 from app.infrastructure.ai.shared.base import Assistant, CompleteOrEscalate
 from app.infrastructure.ai.faq.tools import search_fpt_policies
 from app.infrastructure.ai.faq.prompt import FAQ_SYSTEM_PROMPT
-from app.application.utils.helpers import get_vietnam_time
+from app.infrastructure.utils.helpers import get_vietnam_time
 from dotenv import load_dotenv
 
 load_dotenv()

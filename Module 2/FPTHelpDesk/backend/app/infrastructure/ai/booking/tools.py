@@ -9,7 +9,7 @@ from langgraph.prebuilt import InjectedState
 
 from app.application.dtos.booking_dto import BookingCreateDTO, BookingResponseDTO, BookingUpdateDTO
 from app.application.use_cases.booking_use_case import BookingUseCase
-from app.application.utils.helpers import parse_datetime
+from app.infrastructure.utils.helpers import parse_datetime
 from app.domain.exceptions import BookingNotFoundError, InvalidBookingStatusError
 from app.infrastructure.database.engine import async_session_maker
 from app.infrastructure.ai.hitl.decorator import hitl_protected

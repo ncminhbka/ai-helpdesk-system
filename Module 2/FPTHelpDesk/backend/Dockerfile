@@ -1,25 +1,30 @@
 # ===== Stage 1: Builder =====
 FROM python:3.11-slim AS builder
 
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+
 WORKDIR /app
 
-# Install build deps
-RUN apt-get update && apt-get install -y --no-install-recommends gcc && rm -rf /var/lib/apt/lists/*
+# Copy dependency files — leverage Docker layer cache
+COPY pyproject.toml uv.lock ./
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
-
+# Install dependencies vào /app/.venv, không install project package
+RUN uv sync --frozen --no-install-project --no-dev
 
 # ===== Stage 2: Runtime =====
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy installed packages from builder
-COPY --from=builder /install /usr/local
+# Copy virtualenv từ builder
+COPY --from=builder /app/.venv /app/.venv
 
 # Copy application code
 COPY . .
+
+# Đặt PATH để dùng venv
+ENV PATH="/app/.venv/bin:$PATH"
 
 # Expose FastAPI port
 EXPOSE 8000

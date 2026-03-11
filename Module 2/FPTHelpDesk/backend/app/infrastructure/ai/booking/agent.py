@@ -10,7 +10,7 @@ from langchain_core.runnables import Runnable
 from app.infrastructure.ai.shared.base import Assistant, CompleteOrEscalate
 from app.infrastructure.ai.booking.tools import book_room, track_booking, update_booking, cancel_booking
 from app.infrastructure.ai.booking.prompt import BOOKING_SYSTEM_PROMPT
-from app.application.utils.helpers import get_vietnam_time
+from app.infrastructure.utils.helpers import get_vietnam_time
 from dotenv import load_dotenv
 
 load_dotenv()

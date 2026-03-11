@@ -21,7 +21,12 @@ def get_password_hash(password: str) -> str:
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    """Create a JWT access token with user id and email in payload."""
+    """Create a JWT access token with user id and email in payload.
+        Kết quả của này là một chuỗi JWT token đã được mã hóa (Header.Payload.Signature), 
+        chứa thông tin người dùng và thời gian hết hạn. Token này sẽ được trả về cho client 
+        sau khi đăng nhập thành công, và client sẽ sử dụng token này để xác thực các yêu cầu 
+        tiếp theo đến server.
+    """
     to_encode = data.copy() # Tạo bản sao của data
     expire = datetime.now(timezone.utc) + (
         expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
