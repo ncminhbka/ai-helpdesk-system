@@ -3,7 +3,7 @@ from typing import List, Optional
 from app.application.dtos.booking_dto import BookingCreateDTO, BookingResponseDTO, BookingUpdateDTO
 from app.domain.entities.booking_entity import BookingEntity
 from app.domain.entities.enums import BookingStatus
-from app.domain.exceptions import BookingNotFoundError, InvalidBookingStatusError
+from app.domain.exceptions import BookingNotFoundError
 from app.domain.interfaces.booking_repository import IBookingRepository
 
 
@@ -55,10 +55,7 @@ class BookingUseCase:
         entity = await self.booking_repo.get_by_id(booking_id)
         if not entity:
             raise BookingNotFoundError(f"Booking #{booking_id} not found.")
-        if entity.status in (BookingStatus.FINISHED, BookingStatus.CANCELED):
-            raise InvalidBookingStatusError(
-                f"Cannot update booking #{booking_id}: status is '{entity.status.value}'."
-            )
+        entity.assert_can_be_updated()
 
         if data.room_name is not None:
             entity.room_name = data.room_name
@@ -82,14 +79,6 @@ class BookingUseCase:
         entity = await self.booking_repo.get_by_id(booking_id)
         if not entity:
             raise BookingNotFoundError(f"Booking #{booking_id} not found.")
-        if entity.status == BookingStatus.FINISHED:
-            raise InvalidBookingStatusError(
-                f"Cannot cancel booking #{booking_id}: already Finished."
-            )
-        if entity.status == BookingStatus.CANCELED:
-            raise InvalidBookingStatusError(
-                f"Booking #{booking_id} is already Canceled."
-            )
-        entity.status = BookingStatus.CANCELED
+        entity.cancel()
         updated = await self.booking_repo.update(entity)
         return self._to_dto(updated)

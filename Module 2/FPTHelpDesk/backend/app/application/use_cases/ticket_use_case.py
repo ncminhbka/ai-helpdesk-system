@@ -3,7 +3,7 @@ from typing import List, Optional
 from app.application.dtos.ticket_dto import TicketCreateDTO, TicketResponseDTO, TicketUpdateDTO
 from app.domain.entities.enums import TicketStatus
 from app.domain.entities.ticket_entity import TicketEntity
-from app.domain.exceptions import InvalidTicketStatusError, TicketNotFoundError
+from app.domain.exceptions import TicketNotFoundError
 from app.domain.interfaces.ticket_repository import ITicketRepository
 
 
@@ -51,22 +51,14 @@ class TicketUseCase:
         entity = await self.ticket_repo.get_by_id(ticket_id)
         if not entity:
             raise TicketNotFoundError(f"Ticket #{ticket_id} not found.")
-        if entity.status in (TicketStatus.FINISHED, TicketStatus.CANCELED):
-            raise InvalidTicketStatusError(
-                f"Cannot update ticket #{ticket_id}: status is '{entity.status.value}'."
-            )
+        entity.assert_can_be_updated()
 
         if data.content is not None:
             entity.content = data.content
         if data.description is not None:
             entity.description = data.description
         if data.status is not None:
-            valid_statuses = [s.value for s in TicketStatus]
-            if data.status not in valid_statuses:
-                raise InvalidTicketStatusError(
-                    f"Invalid status '{data.status}'. Valid: {', '.join(valid_statuses)}"
-                )
-            entity.status = TicketStatus(data.status)
+            entity.apply_status(data.status)
         if data.customer_name is not None:
             entity.customer_name = data.customer_name
         if data.customer_phone is not None:

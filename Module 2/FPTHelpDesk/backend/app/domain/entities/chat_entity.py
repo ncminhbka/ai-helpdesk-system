@@ -12,6 +12,9 @@ class ChatSessionEntity:
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
+    def belongs_to_user(self, user_id: int) -> bool:
+        return self.user_id == user_id
+
 
 @dataclass
 class MessageEntity:
