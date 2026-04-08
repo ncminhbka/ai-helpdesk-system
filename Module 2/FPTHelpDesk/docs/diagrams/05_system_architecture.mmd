@@ -1,0 +1,105 @@
+graph TB
+    subgraph "Frontend Layer"
+        UI[🌐 React + Vite]
+        NGINX[🔧 Nginx Proxy]
+    end
+    
+    subgraph "API Gateway"
+        API[🚀 FastAPI Backend]
+        AUTH[🔐 Authentication]
+        DEPS[📦 Dependencies]
+    end
+    
+    subgraph "Application Layer"
+        AUTH_UC[📋 AuthUseCase]
+        USER_UC[👤 UserUseCase]
+        CHAT_UC[💬 ChatUseCase]
+        TICKET_UC[🎫 TicketUseCase]
+        BOOKING_UC[📅 BookingUseCase]
+    end
+    
+    subgraph "Infrastructure Layer"
+        subgraph "AI/ML"
+            GRAPH[🧠 LangGraph Multi-Agent]
+            PRIMARY[🎯 Primary Agent]
+            BOOKING_AGENT[📅 Booking Agent]
+            TICKET_AGENT[🎫 Ticket Agent]
+            FAQ_AGENT[📖 FAQ Agent]
+            IT_AGENT[🔧 IT Support Agent]
+            HITL[⚠️ HITL System]
+        end
+        
+        subgraph "Database"
+            POSTGRES[🗄️ PostgreSQL + pgvector]
+            REPOS[📄 Repositories]
+        end
+        
+        subgraph "Security"
+            JWT[🎫 JWT Service]
+            BCRYPT[🔐 Bcrypt Hasher]
+        end
+        
+        subgraph "External APIs"
+            OPENAI[🤖 OpenAI API]
+            TAVILY[🔍 Tavily Search]
+        end
+    end
+    
+    subgraph "Domain Layer"
+        ENTITIES[📋 Entities]
+        INTERFACES[🔌 Interfaces]
+        EXCEPTIONS[⚠️ Exceptions]
+    end
+    
+    %% Connections
+    UI --> NGINX
+    NGINX --> API
+    
+    API --> AUTH
+    API --> DEPS
+    
+    AUTH --> AUTH_UC
+    DEPS --> USER_UC
+    DEPS --> CHAT_UC
+    DEPS --> TICKET_UC
+    DEPS --> BOOKING_UC
+    
+    AUTH_UC --> JWT
+    AUTH_UC --> BCRYPT
+    USER_UC --> REPOS
+    CHAT_UC --> REPOS
+    CHAT_UC --> GRAPH
+    TICKET_UC --> REPOS
+    BOOKING_UC --> REPOS
+    
+    GRAPH --> PRIMARY
+    PRIMARY --> BOOKING_AGENT
+    PRIMARY --> TICKET_AGENT
+    PRIMARY --> FAQ_AGENT
+    PRIMARY --> IT_AGENT
+    
+    BOOKING_AGENT --> HITL
+    TICKET_AGENT --> HITL
+    
+    REPOS --> POSTGRES
+    FAQ_AGENT --> POSTGRES
+    
+    GRAPH --> OPENAI
+    IT_AGENT --> TAVILY
+    
+    REPOS --> INTERFACES
+    UC_CLASSES[Use Cases] --> ENTITIES
+    UC_CLASSES --> EXCEPTIONS
+    
+    %% Styling
+    classDef frontend fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef api fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef application fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef infrastructure fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef domain fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    
+    class UI,NGINX frontend
+    class API,AUTH,DEPS api
+    class AUTH_UC,USER_UC,CHAT_UC,TICKET_UC,BOOKING_UC application
+    class GRAPH,PRIMARY,BOOKING_AGENT,TICKET_AGENT,FAQ_AGENT,IT_AGENT,HITL,POSTGRES,REPOS,JWT,BCRYPT,OPENAI,TAVILY infrastructure
+    class ENTITIES,INTERFACES,EXCEPTIONS domain

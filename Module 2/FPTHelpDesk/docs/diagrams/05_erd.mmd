@@ -1,0 +1,55 @@
+erDiagram
+    USERS {
+        int id PK
+        string email UK
+        string hashed_password
+        string full_name
+        datetime created_at
+    }
+
+    CHAT_SESSIONS {
+        string id PK
+        int user_id FK
+        datetime created_at
+        datetime updated_at
+    }
+
+    CHAT_MESSAGES {
+        int id PK
+        string session_id FK
+        string role
+        text content
+        datetime created_at
+    }
+
+    TICKETS {
+        int id PK
+        int user_id FK
+        string title
+        text description
+        string status
+        datetime created_at
+        datetime updated_at
+    }
+
+    BOOKINGS {
+        int id PK
+        int user_id FK
+        string room_name
+        string reason
+        datetime booking_time
+        string status
+        datetime created_at
+    }
+
+    LANGCHAIN_PG_EMBEDDING {
+        uuid id PK
+        vector embedding
+        text document
+        jsonb cmetadata
+    }
+
+    USERS ||--o{ CHAT_SESSIONS : owns
+    CHAT_SESSIONS ||--o{ CHAT_MESSAGES : contains
+    USERS ||--o{ TICKETS : creates
+    USERS ||--o{ BOOKINGS : makes

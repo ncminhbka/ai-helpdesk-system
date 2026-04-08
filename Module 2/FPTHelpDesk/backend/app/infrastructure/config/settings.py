@@ -60,6 +60,12 @@ class Settings(BaseSettings):
     # ── HITL (Human-in-the-Loop) ─────────────────────
     ENABLE_HITL: bool = True
 
+    # ── Guardrails (always enforced — no on/off toggle) ──
+    # Minimum classifier confidence to block a message.
+    # Below this threshold the guard fails open (passes the message through).
+    # Increase toward 1.0 for stricter blocking; decrease for fewer false positives.
+    GUARDRAILS_CONFIDENCE_THRESHOLD: float = 0.80
+
     # ── LangSmith (optional tracing) ─────────────────
     LANGCHAIN_TRACING_V2: bool = False
     LANGCHAIN_API_KEY: str = ""

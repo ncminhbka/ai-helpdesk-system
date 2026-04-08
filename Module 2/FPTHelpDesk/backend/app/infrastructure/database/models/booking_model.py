@@ -1,6 +1,6 @@
 """Meeting room booking ORM model."""
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, Mapped, mapped_column
 from datetime import datetime, timezone
 from app.infrastructure.database.base import Base
 from app.domain.entities.enums import BookingStatus

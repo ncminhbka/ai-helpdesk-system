@@ -1,0 +1,50 @@
+flowchart TD
+    START([START]) --> GUARD[guard<br/>Prompt guardrail validation]
+    GUARD -->|guard_triggered=false| FUI[fetch_user_info<br/>Load user context]
+    GUARD -->|guard_triggered=true| END_GUARD([END - Blocked])
+    
+    FUI --> RTW{route_to_workflow}
+
+    RTW -->|dialog_state empty| PA[primary_assistant<br/>GPT-4o-mini Router]
+    RTW -->|dialog_state has agent| RESUME[Resume active agent]
+
+    PA -->|ToBookingAgent| EB[enter_booking]
+    PA -->|ToTicketAgent| ET[enter_ticket]
+    PA -->|ToFAQAgent| EF[enter_faq]
+    PA -->|ToITSupportAgent| EI[enter_it_support]
+    PA -->|direct answer| END_PA([END])
+
+    subgraph BW["Booking Workflow"]
+        EB --> BA[booking_agent]
+        BA -->|use tools| BT[booking_tools<br/>book / update / cancel / search]
+        BT --> BA
+        BA -->|CompleteOrEscalate| LS[leave_skill]
+    end
+
+    subgraph TW["Ticket Workflow"]
+        ET --> TA[ticket_agent]
+        TA -->|use tools| TT[ticket_tools<br/>create / update / search]
+        TT --> TA
+        TA -->|CompleteOrEscalate| LS
+    end
+
+    subgraph FW["FAQ Workflow"]
+        EF --> FA[faq_agent]
+        FA -->|use tools| FT[faq_tools<br/>pgvector RAG search]
+        FT --> FA
+        FA -->|CompleteOrEscalate| LS
+    end
+
+    subgraph IW["IT Support Workflow"]
+        EI --> IA[it_support_agent]
+        IA -->|use tools| IT[it_support_tools<br/>Tavily web search]
+        IT --> IA
+        IA -->|CompleteOrEscalate| LS
+    end
+
+    LS --> PA
+
+    style BW fill:#e8f4f8,stroke:#2196f3
+    style TW fill:#f3e8f8,stroke:#9c27b0
+    style FW fill:#e8f8e8,stroke:#4caf50
+    style IW fill:#fff8e8,stroke:#ff9800

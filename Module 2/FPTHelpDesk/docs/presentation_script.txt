@@ -1,0 +1,326 @@
+================================================================================
+  FPT HELPDESK — TECHNICAL PRESENTATION SCRIPT
+  Audience: Technical Lead / Manager
+================================================================================
+
+
+SLIDE 1 — OPENING
+-----------------
+
+Good [morning/afternoon]. Today I'd like to walk you through the technical
+architecture of FPT HelpDesk — an AI-powered internal support system I built
+during my internship.
+
+The system is designed to handle employee requests — such as meeting room
+bookings, support tickets, HR policy questions, and IT troubleshooting — all
+through a single conversational interface powered by multiple AI agents.
+
+Let me start with the big picture.
+
+
+--------------------------------------------------------------------------------
+SLIDE 2 — SYSTEM OVERVIEW
+--------------------------------------------------------------------------------
+
+FPT HelpDesk is a full-stack web application consisting of three services
+deployed via Docker Compose:
+
+  - A React frontend served through Nginx on port 80
+  - A FastAPI backend on port 8000
+  - A PostgreSQL 17 database with the pgvector extension on port 5432
+
+The frontend communicates with the backend exclusively through a REST API.
+The backend hosts the entire AI agent system and all business logic.
+
+The tech stack is:
+  - Language:        Python 3.11
+  - Web framework:   FastAPI (async)
+  - AI orchestration: LangGraph + LangChain
+  - LLM:             OpenAI GPT-4o-mini
+  - Vector database: PostgreSQL + pgvector
+  - Web search:      Tavily API
+  - Auth:            JWT + bcrypt
+  - ORM:             SQLAlchemy (async via asyncpg)
+
+
+--------------------------------------------------------------------------------
+SLIDE 3 — CLEAN ARCHITECTURE
+--------------------------------------------------------------------------------
+
+The backend follows Clean Architecture — a design principle where the codebase
+is divided into four layers with a strict dependency rule: outer layers depend
+on inner layers, never the reverse.
+
+  Layer 1 — Domain (innermost)
+    Pure Python. No framework dependencies whatsoever.
+    Contains: domain entities (User, Ticket, Booking, ChatSession),
+    abstract interfaces (IUserRepository, ITicketRepository), and
+    domain exceptions (InvalidTicketStatusError, BookingNotFoundError).
+
+    Entities here are "rich" — they don't just hold data, they enforce
+    business rules. For example, a TicketEntity knows it cannot be updated
+    once its status is FINISHED or CANCELED. That logic lives in the entity
+    itself, not scattered across the codebase.
+
+  Layer 2 — Application
+    Contains Use Cases: AuthUseCase, ChatUseCase, TicketUseCase, BookingUseCase.
+    Each Use Case represents one business workflow. It calls the Domain
+    interfaces and works with DTOs — Data Transfer Objects — which are
+    Pydantic models used to pass data between layers without exposing
+    internal implementation details.
+
+  Layer 3 — Infrastructure
+    Contains all the concrete implementations: SQLAlchemy repositories,
+    JWT/bcrypt security, the LangGraph AI agents, and configuration via
+    Pydantic Settings. This layer knows about PostgreSQL, OpenAI, and Tavily —
+    but the inner layers do not.
+
+  Layer 4 — Presentation (outermost)
+    FastAPI endpoints and dependency injection. This layer translates
+    HTTP requests into Use Case calls and HTTP responses back out.
+    It contains no business logic.
+
+This separation means we can swap the database engine, change the AI provider,
+or replace FastAPI with another framework — without touching Domain or
+Application code.
+
+
+--------------------------------------------------------------------------------
+SLIDE 4 — MULTI-AGENT SYSTEM
+--------------------------------------------------------------------------------
+
+The core of the system is a multi-agent AI pipeline built with LangGraph.
+
+LangGraph models the system as a directed graph of nodes and edges.
+Each node is either an AI agent or a tool executor.
+The graph manages shared state, routes messages between agents, and
+handles interrupts for human confirmation.
+
+The system has five agents:
+
+  1. Primary Assistant
+     The entry point for every user message. It analyzes intent and
+     routes the conversation to the appropriate specialized agent.
+     It does not execute any actions itself — it only delegates.
+     Tools available: ToBookingAgent, ToTicketAgent, ToFAQAgent, ToITSupportAgent.
+
+  2. Booking Agent
+     Handles meeting room reservations.
+     Tools: book_room, track_booking, update_booking, cancel_booking.
+     Status flow: Scheduled → Finished (or Canceled).
+
+  3. Ticket Agent
+     Manages support ticket lifecycle.
+     Tools: create_ticket, track_ticket, update_ticket.
+     Status flow: Pending → Resolving → Finished (or Canceled).
+
+  4. FAQ Agent (RAG-based)
+     Answers questions about company policies using
+     Retrieval-Augmented Generation. It performs semantic search against
+     policy documents (PDF files) stored as vector embeddings in PostgreSQL
+     via pgvector. It is strictly prohibited from answering without
+     calling the search tool first — preventing hallucinations.
+
+  5. IT Support Agent
+     Handles technical troubleshooting by querying the web in real time
+     using the Tavily search API. It returns the top 5 results relevant to
+     the reported issue.
+
+The agents share a common TypedDict state called AgentState, which tracks:
+the full conversation history, the authenticated user's ID and email,
+the current session ID, the active agent stack (dialog_state), and
+the detected language (Vietnamese or English).
+
+
+--------------------------------------------------------------------------------
+SLIDE 5 — LANGGRAPH EXECUTION FLOW
+--------------------------------------------------------------------------------
+
+Let me walk through what happens when a user sends a message.
+
+  Step 1: The frontend sends a POST request to /api/v1/chat/send_message
+          with the message text and session ID.
+
+  Step 2: The ChatUseCase stores the message in the database and invokes
+          the LangGraph runner.
+
+  Step 3: LangGraph starts execution at the fetch_user_info node,
+          then routes to the Primary Assistant.
+
+  Step 4: The Primary Assistant LLM reads the message, determines intent,
+          and calls a transfer tool (e.g., ToBookingAgent).
+
+  Step 5: The graph enters the booking sub-workflow:
+          enter_booking → booking_agent → booking_tools → (loop) → leave_skill.
+
+  Step 6: The Booking Agent LLM decides which tool to call with what arguments.
+          For example: book_room(room_name="CR7", time="2026-03-13 10:00").
+
+  Step 7: Before executing book_room, the HITL decorator intercepts the call,
+          pauses the graph, and returns an interrupt payload to the frontend.
+
+  Step 8: The frontend renders a confirmation card showing the booking details
+          in Vietnamese with editable fields.
+
+  Step 9: The user reviews, optionally edits the fields, and clicks Approve.
+
+  Step 10: The frontend sends a POST to /api/v1/chat/resume with the
+           approval payload. LangGraph resumes from its saved checkpoint
+           in PostgreSQL and executes the actual booking.
+
+  Step 11: The Booking Agent returns a formatted confirmation message.
+           The graph pops the agent stack and returns control to the
+           Primary Assistant, which then ends the turn.
+
+  Step 12: The response is stored in the database and returned to the user.
+
+The entire graph state is persisted in PostgreSQL via LangGraph's
+AsyncPostgresSaver checkpointer. This means conversations survive server
+restarts, and users can resume a session even after refreshing the browser.
+
+
+--------------------------------------------------------------------------------
+SLIDE 6 — HITL (HUMAN-IN-THE-LOOP)
+--------------------------------------------------------------------------------
+
+HITL — Human-in-the-Loop — is the confirmation mechanism for sensitive actions.
+
+I implemented it as a Python decorator: @hitl_protected.
+
+Any tool decorated with @hitl_protected will pause execution and ask the user
+to confirm before running. The decorator captures the tool's arguments,
+formats them with human-readable Vietnamese labels, and calls LangGraph's
+interrupt() function to freeze the graph.
+
+When the user approves:
+  - If no edits: the tool runs with the original arguments.
+  - If edited: the tool runs with the modified arguments, and the response
+    is prefixed with a warning noting that the data was changed.
+  - If rejected: the tool is skipped and a cancellation message is returned.
+
+HITL can be toggled globally via the ENABLE_HITL environment variable,
+which is useful for testing or automation.
+
+Protected operations include: book_room, update_booking, cancel_booking,
+create_ticket, and update_ticket.
+
+
+--------------------------------------------------------------------------------
+SLIDE 7 — VECTOR SEARCH (RAG)
+--------------------------------------------------------------------------------
+
+For the FAQ agent, I set up a Retrieval-Augmented Generation pipeline
+using pgvector — a PostgreSQL extension that stores and queries
+high-dimensional vector embeddings.
+
+The pipeline works as follows:
+
+  Ingestion (one-time setup):
+    - Policy PDF documents are loaded and split into chunks.
+    - Each chunk is embedded using OpenAI's text-embedding-3-small model.
+    - Embeddings are stored in the langchain_pg_embedding table in PostgreSQL
+      under a collection named "fpt_policies".
+
+  Query time (every FAQ request):
+    - The user's question is embedded using the same model.
+    - A cosine similarity search retrieves the top 4 most relevant chunks.
+    - The FAQ agent uses these chunks as context to generate a grounded answer.
+
+This approach ensures answers are based on actual company documents —
+not on the LLM's general training data.
+
+
+--------------------------------------------------------------------------------
+SLIDE 8 — ASYNC ARCHITECTURE
+--------------------------------------------------------------------------------
+
+The entire backend is built on asynchronous I/O using Python's asyncio.
+
+FastAPI, SQLAlchemy with asyncpg, and LangGraph all support async natively.
+Every database operation is non-blocking, meaning a single thread can handle
+thousands of concurrent requests while waiting for database responses.
+
+The one exception is Alembic — the database migration tool. Alembic does not
+support async, so it uses a separate synchronous PostgreSQL connection
+(via psycopg2) only at migration time. The application itself always uses
+the async driver.
+
+
+--------------------------------------------------------------------------------
+SLIDE 9 — SECURITY
+--------------------------------------------------------------------------------
+
+Authentication uses JWT (JSON Web Tokens) with the HS256 algorithm.
+
+  - Tokens expire after 24 hours (configurable).
+  - Passwords are hashed with bcrypt before storage.
+  - The current user is resolved via a FastAPI dependency (get_current_user)
+    that validates the token on every protected endpoint.
+  - The IPasswordHasher and ITokenService interfaces in the Domain layer
+    ensure the security implementation can be swapped without changing
+    business logic.
+
+
+--------------------------------------------------------------------------------
+SLIDE 10 — DATABASE DESIGN
+--------------------------------------------------------------------------------
+
+The PostgreSQL database has the following core tables:
+
+  users         — employee accounts (email, hashed_password, name)
+  booking       — room reservations (room_name, reason, time, status, user_id)
+  ticket        — support tickets (content, description, status, user_id)
+  chat_session  — conversation sessions (user_id, timestamps)
+  chat_message  — individual messages (session_id, role, content, type, metadata)
+
+  langchain_pg_embedding — pgvector embeddings for FAQ (documents + vectors)
+  checkpoints            — LangGraph state snapshots per session (for HITL resume)
+
+All datetime fields are timezone-aware UTC. Status fields use string enums
+(Pending, Resolving, Finished, Canceled for tickets; Scheduled, Finished,
+Canceled for bookings).
+
+
+--------------------------------------------------------------------------------
+SLIDE 11 — WHAT I LEARNED / KEY TAKEAWAYS
+--------------------------------------------------------------------------------
+
+Building this system gave me hands-on experience with several important concepts:
+
+  1. Clean Architecture in practice — enforcing strict layer boundaries
+     and keeping the domain free of framework dependencies.
+
+  2. LangGraph for stateful agents — modeling complex multi-step workflows
+     as graphs with persistent state and interrupt-resume capability.
+
+  3. Async programming — understanding when and why async matters for
+     I/O-bound applications, and how the full stack needs to be async-aware.
+
+  4. RAG pipelines — ingesting real documents into a vector store and
+     using semantic search to ground LLM responses in factual content.
+
+  5. HITL design — thinking about user trust and control in AI systems,
+     and implementing a confirmation mechanism that balances automation
+     with human oversight.
+
+
+--------------------------------------------------------------------------------
+SLIDE 12 — CLOSING
+--------------------------------------------------------------------------------
+
+To summarize: FPT HelpDesk is a production-ready multi-agent AI system
+that handles internal helpdesk workflows through a conversational interface.
+
+It is stateful, bilingual, and designed with Clean Architecture principles
+that make it maintainable and extensible.
+
+The system is fully containerized and can be deployed with a single command:
+
+  docker compose up -d --build
+
+Thank you for your time. I'm happy to take any questions.
+
+
+================================================================================
+END OF SCRIPT
+================================================================================

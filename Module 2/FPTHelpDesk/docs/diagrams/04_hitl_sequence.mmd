@@ -1,0 +1,34 @@
+sequenceDiagram
+    participant U as User
+    participant FE as React Frontend
+    participant API as FastAPI /chat
+    participant LG as LangGraph
+    participant T as Sensitive Tool
+    participant DB as PostgreSQL
+
+    U->>FE: "Dat phong CR7 luc 10:00"
+    FE->>API: POST /api/v1/chat/stream
+    API->>LG: graph.astream(input, config)
+
+    LG->>T: book_room(room="CR7", time="10:00")
+    Note over T: @hitl_protected triggers interrupt()
+    T-->>LG: interrupt(payload)
+    LG-->>API: type: interrupt — action: book_room
+    API-->>FE: SSE event: interrupt payload
+    FE-->>U: Hien Confirm Card
+
+    alt User APPROVE (co the edit)
+        U->>FE: Click "Xac nhan"
+        FE->>API: POST /chat/resume action: approve
+        API->>LG: graph.astream(Command(resume=response))
+        LG->>T: Merge edits — execute tool
+        T->>DB: INSERT booking
+        DB-->>T: OK
+        T-->>LG: "Da dat phong CR7 luc 10:00"
+        LG-->>FE: Stream final answer
+    else User REJECT
+        U->>FE: Click "Huy"
+        FE->>API: POST /chat/resume action: reject
+        API->>LG: graph.astream(Command(resume=response))
+        LG-->>FE: Da huy thao tac.
+    end

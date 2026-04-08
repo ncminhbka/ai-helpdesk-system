@@ -1,0 +1,61 @@
+flowchart TD
+    REQ[HTTP POST /api/v1/auth/login]
+
+    subgraph Presentation["Layer 4: Presentation"]
+        EP[auth.py endpoint]
+        DEP[dependencies.py<br/>OAuth2PasswordBearer]
+    end
+
+    subgraph Application["Layer 2: Application"]
+        AUTH_UC[AuthUseCase<br/>login method]
+        USER_UC[UserUseCase<br/>get_by_email]
+    end
+
+    subgraph Infrastructure["Layer 3: Infrastructure"]
+        JWT_SVC[JwtTokenService<br/>create_access_token]
+        PWD_HASHER[BcryptPasswordHasher<br/>verify_password]
+        USER_REPO[UserRepository<br/>get_by_email]
+    end
+
+    subgraph Domain["Layer 1: Domain"]
+        USER_ENTITY[UserEntity<br/>id, email, password_hash, name]
+        AUTH_EXCEPTIONS[AuthenticationError<br/>CredentialsException]
+    end
+
+    subgraph DB["PostgreSQL"]
+        USERS_TBL[users table]
+    end
+
+    REQ --> DEP
+    DEP -->|extract token| EP
+    EP --> AUTH_UC
+    
+    AUTH_UC --> USER_UC
+    USER_UC --> USER_REPO
+    USER_REPO --> USERS_TBL
+    USERS_TBL --> USER_REPO
+    USER_REPO --> USER_ENTITY
+    USER_ENTITY --> USER_UC
+    USER_UC --> AUTH_UC
+    
+    AUTH_UC --> PWD_HASHER
+    PWD_HASHER -->|verify| USER_ENTITY
+    
+    AUTH_UC --> JWT_SVC
+    JWT_SVC -->|create token| AUTH_UC
+    
+    AUTH_UC -->|LoginResponse| EP
+    EP -->|200 OK + JWT| REQ
+
+    %% Error flows
+    USER_REPO -.->|user not found| AUTH_EXCEPTIONS
+    PWD_HASHER -.->|password mismatch| AUTH_EXCEPTIONS
+    AUTH_EXCEPTIONS -.->|401 Unauthorized| EP
+    EP -.->|401 Unauthorized| REQ
+
+    %% Styling
+    style Presentation fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    style Application fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    style Infrastructure fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    style Domain fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    style DB fill:#f5f5f5,stroke:#424242,stroke-width:2px

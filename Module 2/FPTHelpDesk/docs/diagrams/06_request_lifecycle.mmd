@@ -1,0 +1,35 @@
+flowchart LR
+    REQ[HTTP POST /api/v1/chat/stream]
+
+    subgraph Presentation
+        EP[chat.py endpoint]
+        DEP[dependencies.py<br/>get_current_user]
+    end
+
+    subgraph Application
+        CUC[ChatUseCase<br/>.stream_response]
+    end
+
+    subgraph Infrastructure
+        GR[GraphRunner<br/>.astream]
+        LG[LangGraph StateGraph]
+        REPO[ChatRepository<br/>save messages]
+    end
+
+    subgraph DB["PostgreSQL"]
+        SS[chat_sessions]
+        MSG[chat_messages]
+    end
+
+    REQ --> DEP
+    DEP -->|JWT validate| EP
+    EP --> CUC
+    CUC --> GR
+    GR --> LG
+    LG -->|tool results| GR
+    GR -->|stream chunks| CUC
+    CUC -->|save| REPO
+    REPO --> SS
+    REPO --> MSG
+    CUC -->|SSE stream| EP
+    EP -->|EventSourceResponse| REQ

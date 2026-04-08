@@ -14,6 +14,7 @@ from langgraph.prebuilt import tools_condition, ToolNode
 
 from app.infrastructure.ai.shared.state import AgentState
 
+from app.infrastructure.ai.guardrails.guard_node import guard_node
 from app.infrastructure.ai.primary.agent import get_primary_agent
 from app.infrastructure.ai.booking.agent import get_booking_agent, booking_tools
 from app.infrastructure.ai.ticket.agent import get_ticket_agent, ticket_tools
@@ -167,6 +168,19 @@ def route_to_workflow(state: AgentState):
     return dialog_state[-1]
 
 
+# ==================== GUARDRAIL ROUTING ====================
+
+def route_after_guard(state: AgentState):
+    """
+    Conditional edge after the guard node.
+    - guard_triggered=True  → END (rejection AIMessage already in state.messages)
+    - guard_triggered=False → proceed to fetch_user_info as normal
+    """
+    if state.get("guard_triggered"):
+        return END
+    return "fetch_user_info"
+
+
 # ==================== GRAPH CONSTRUCTION ====================
 
 def create_graph(checkpointer=None):
@@ -197,7 +211,16 @@ def create_graph(checkpointer=None):
         }
 
     builder.add_node("fetch_user_info", fetch_user_info)
-    builder.add_edge(START, "fetch_user_info")
+
+    # ----- Guardrail node (always first) -----
+    builder.add_node("guard", guard_node)
+    builder.add_edge(START, "guard")
+    builder.add_conditional_edges(
+        "guard",
+        route_after_guard,
+        {"fetch_user_info": "fetch_user_info", END: END},
+    )
+
     builder.add_conditional_edges("fetch_user_info", route_to_workflow)
 
     # ----- Primary Assistant -----

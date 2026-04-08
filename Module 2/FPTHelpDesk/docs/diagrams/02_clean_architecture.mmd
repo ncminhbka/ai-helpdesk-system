@@ -1,0 +1,39 @@
+graph TB
+    subgraph P["Layer 4 — Presentation (FastAPI)"]
+        P1[auth.py / chat.py / users.py]
+        P2[dependencies.py — DI wiring]
+        P3[router.py]
+    end
+
+    subgraph A["Layer 3 — Infrastructure"]
+        A1[AI Agents — LangGraph]
+        A2[Repositories — SQLAlchemy]
+        A3[Security — JWT + bcrypt]
+        A4[Config — Pydantic Settings]
+        A5[Database — engine + models]
+    end
+
+    subgraph UC["Layer 2 — Application"]
+        UC1[AuthUseCase]
+        UC2[ChatUseCase]
+        UC3[TicketUseCase]
+        UC4[BookingUseCase]
+        UC5[UserUseCase]
+        D1[DTOs — Pydantic]
+    end
+
+    subgraph D["Layer 1 — Domain (Pure Python)"]
+        D2[Interfaces: IUserRepository / ITokenService / IPasswordHasher]
+        D3[Enums: TicketStatus / BookingStatus]
+        D4[Exceptions]
+    end
+
+    P -->|calls| UC
+    A -->|implements| D2
+    UC -->|depends on| D2
+    UC -->|uses| D3
+
+    style D fill:#e8f5e9,stroke:#4caf50
+    style UC fill:#e3f2fd,stroke:#2196f3
+    style A fill:#fff3e0,stroke:#ff9800
+    style P fill:#fce4ec,stroke:#e91e63

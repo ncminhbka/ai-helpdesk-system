@@ -36,6 +36,8 @@ class AgentState(TypedDict):
     - language: Detected language ('vi' or 'en').
     - current_intent: Current topic/intent for routing.
     - dialog_state: Stack of active agent workflows.
+    - guard_result: Output from the guardrail classifier (category, confidence, reason).
+    - guard_triggered: True when the guard blocked the message; used for graph routing.
     """
     messages: Annotated[list[AnyMessage], add_messages]
     user_id: Optional[int]
@@ -45,3 +47,5 @@ class AgentState(TypedDict):
     language: Optional[str]
     current_intent: Optional[str]
     dialog_state: Annotated[list[str], update_dialog_stack]
+    guard_result: Optional[dict]
+    guard_triggered: Optional[bool]

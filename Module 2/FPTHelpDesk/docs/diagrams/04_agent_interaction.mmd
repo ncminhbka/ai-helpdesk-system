@@ -1,0 +1,76 @@
+sequenceDiagram
+    participant User as 👤 User
+    participant Graph as 🧠 LangGraph
+    participant Primary as 🎯 Primary Assistant
+    participant Agent as 🤖 Specialized Agent
+    participant Tools as 🔧 Agent Tools
+    participant HITL as ⚠️ HITL System
+    participant DB as 🗄️ Database
+
+    User->>Graph: "Đặt phòng CR7 lúc 10:00 ngày mai"
+    activate Graph
+    
+    Note over Graph: Guard validation
+    Graph->>Graph: guard_node()
+    
+    Note over Graph: Fetch user context
+    Graph->>Graph: fetch_user_info()
+    
+    Note over Graph: Route to workflow
+    Graph->>Graph: route_to_workflow()
+    
+    Graph->>Primary: primary_assistant()
+    activate Primary
+    Primary->>Primary: Analyze intent
+    Primary-->>Graph: ToBookingAgent tool call
+    deactivate Primary
+    
+    Note over Graph: Entry node setup
+    Graph->>Graph: enter_booking()
+    
+    Graph->>Agent: booking_agent()
+    activate Agent
+    Agent->>Agent: Process booking request
+    Agent->>Tools: create_booking_tool()
+    activate Tools
+    
+    Note over Tools: HITL Protection
+    Tools->>HITL: @hitl_protected decorator
+    activate HITL
+    HITL-->>Tools: interrupt(interrupt_data)
+    deactivate HITL
+    
+    Tools-->>Agent: INTERRUPT signal
+    deactivate Tools
+    Agent-->>Graph: Interrupt state
+    deactivate Agent
+    
+    Graph-->>User: "⚠️ Xác nhận: Đặt phòng họp"
+    deactivate Graph
+    
+    Note over User,DB: User confirms
+    User->>Graph: {"action": "approve"}
+    activate Graph
+    Graph->>Graph: resume_from_interrupt()
+    
+    Graph->>Agent: booking_agent() (resumed)
+    activate Agent
+    Agent->>Tools: create_booking_tool() (continue)
+    activate Tools
+    Tools->>DB: INSERT INTO bookings
+    activate DB
+    DB-->>Tools: Success
+    deactivate DB
+    Tools-->>Agent: Booking created
+    deactivate Tools
+    Agent-->>Graph: CompleteOrEscalate
+    deactivate Agent
+    
+    Graph->>Graph: leave_skill()
+    Graph->>Primary: primary_assistant()
+    activate Primary
+    Primary-->>Graph: Final response
+    deactivate Primary
+    
+    Graph-->>User: "✅ Đặt phòng CR7 thành công!"
+    deactivate Graph
